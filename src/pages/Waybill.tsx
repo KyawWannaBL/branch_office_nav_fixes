@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Search, Download, Send, CheckCircle, Filter, Calendar } from 'lucide-react';
+import { Search, Download, Send, CheckCircle, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { DataTable } from '@/components/DataTable';
-import { mockReceipts } from '@/data/index';
+import * as dataStore from '@/data/index';
 import {
   Receipt,
   PaymentStatus,
@@ -34,7 +34,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { springPresets } from '@/lib/motion';
 
 export default function Receipts() {
-  const [receipts] = useState<Receipt[]>(mockReceipts);
+  const receiptSeed: Receipt[] = Array.isArray((dataStore as any).mockReceipts)
+    ? ((dataStore as any).mockReceipts as Receipt[])
+    : [];
+
+  const [receipts] = useState<Receipt[]>(receiptSeed);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
@@ -48,6 +52,7 @@ export default function Receipts() {
       const matchesSearch =
         receipt.merchantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         receipt.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase());
+
       const matchesStatus = statusFilter === 'all' || receipt.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -120,7 +125,15 @@ export default function Receipts() {
   const columns = [
     {
       key: 'select',
-      label: '',
+      label: (
+        <Checkbox
+          checked={
+            filteredReceipts.length > 0 &&
+            filteredReceipts.every((receipt) => selectedReceipts.has(receipt.id))
+          }
+          onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+        />
+      ),
       sortable: false,
       render: (receipt: Receipt) => (
         <Checkbox
@@ -191,7 +204,9 @@ export default function Receipts() {
       label: 'Status',
       sortable: true,
       render: (receipt: Receipt) => (
-        <Badge className={getStatusColor(receipt.status)}>{getStatusLabel(receipt.status)}</Badge>
+        <Badge className={getStatusColor(receipt.status)}>
+          {getStatusLabel(receipt.status)}
+        </Badge>
       ),
     },
   ];
@@ -228,7 +243,9 @@ export default function Receipts() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Receipts</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Receipts
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
@@ -240,10 +257,14 @@ export default function Receipts() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Payment</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pending Payment
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.pending}</div>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {stats.pending}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
               Amount: {formatCurrency(stats.pendingAmount)}
             </p>
@@ -265,7 +286,9 @@ export default function Receipts() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.paid}</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {stats.paid}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Successfully processed</p>
           </CardContent>
         </Card>
@@ -305,6 +328,7 @@ export default function Receipts() {
                 className="pl-9"
               />
             </div>
+
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-[200px]">
                 <Filter className="h-4 w-4 mr-2" />
@@ -331,54 +355,73 @@ export default function Receipts() {
             <DialogTitle>Receipt Details</DialogTitle>
             <DialogDescription>View complete receipt information</DialogDescription>
           </DialogHeader>
+
           {selectedReceipt && (
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Receipt Number</div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">
+                    Receipt Number
+                  </div>
                   <div className="font-mono font-semibold">{selectedReceipt.receiptNumber}</div>
                 </div>
+
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
                   <Badge className={getStatusColor(selectedReceipt.status)}>
                     {getStatusLabel(selectedReceipt.status)}
                   </Badge>
                 </div>
+
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Merchant</div>
                   <div className="font-medium">{selectedReceipt.merchantName}</div>
                 </div>
+
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Amount</div>
                   <div className="font-mono text-lg font-bold">
                     {formatCurrency(selectedReceipt.amount)}
                   </div>
                 </div>
+
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Delivery Count</div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">
+                    Delivery Count
+                  </div>
                   <div>{selectedReceipt.deliveryCount} deliveries</div>
                 </div>
+
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Period</div>
                   <div className="text-sm">
-                    {formatDate(selectedReceipt.periodStart)} - {formatDate(selectedReceipt.periodEnd)}
+                    {formatDate(selectedReceipt.periodStart)} -{' '}
+                    {formatDate(selectedReceipt.periodEnd)}
                   </div>
                 </div>
+
                 <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Issued Date</div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">
+                    Issued Date
+                  </div>
                   <div>{formatDate(selectedReceipt.issuedDate)}</div>
                 </div>
+
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Due Date</div>
                   <div>{formatDate(selectedReceipt.dueDate)}</div>
                 </div>
+
                 {selectedReceipt.paidDate && (
                   <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Paid Date</div>
+                    <div className="text-sm font-medium text-muted-foreground mb-1">
+                      Paid Date
+                    </div>
                     <div>{formatDate(selectedReceipt.paidDate)}</div>
                   </div>
                 )}
               </div>
+
               {selectedReceipt.notes && (
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Notes</div>
@@ -387,6 +430,7 @@ export default function Receipts() {
               )}
             </div>
           )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewReceiptDialog(false)}>
               Close
@@ -409,11 +453,14 @@ export default function Receipts() {
                 : `Mark ${selectedReceipts.size} selected receipt(s) as paid?`}
             </DialogDescription>
           </DialogHeader>
+
           <div className="py-4">
             <p className="text-sm text-muted-foreground">
-              This action will update the payment status to "Paid" and record the payment date as today.
+              This action will update the payment status to &quot;Paid&quot; and record the payment
+              date as today.
             </p>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setMarkPaidDialog(false)}>
               Cancel
@@ -434,12 +481,14 @@ export default function Receipts() {
               Send payment reminder to {selectedReceipts.size} merchant(s)?
             </DialogDescription>
           </DialogHeader>
+
           <div className="py-4">
             <p className="text-sm text-muted-foreground">
               A payment reminder email will be sent to the selected merchants with their outstanding
               receipt details.
             </p>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendReminderDialog(false)}>
               Cancel
