@@ -7,14 +7,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Sidebar } from "./components/Sidebar";
 
-// Pages
-import Login from "./pages/Login";
+// Page Imports
 import Dashboard from "./pages/Dashboard";
 import CreateDelivery from "./pages/CreateDelivery";
 import WayManagement from "./pages/WayManagement";
 import Deliverymen from "./pages/Deliverymen";
 import Merchants from "./pages/Merchants";
-import Waybill from "@/pages/Waybill";
+import Waybill from "@/pages/waybill";
 import Reporting from "./pages/Reporting";
 import Settings from "./pages/Settings";
 import SupervisorPortal from "./pages/SupervisorPortal";
