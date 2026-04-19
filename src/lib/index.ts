@@ -10,12 +10,8 @@ import type {
 
 /**
  * Production-safe data module.
- *
  * No mock business data is shipped from the frontend.
- * Real data should come from Supabase / API calls.
- *
- * These exports stay in place so existing imports do not break
- * while you migrate pages to real backend data.
+ * Replace these with real API / Supabase queries later.
  */
 
 export const deliveriesSeed: Delivery[] = [];
@@ -26,7 +22,9 @@ export const transactionsSeed: Transaction[] = [];
 export const accountsSeed: Account[] = [];
 export const reportsSeed: Report[] = [];
 
-// Backward-compatible aliases
+/**
+ * Backward-compatible aliases so existing imports do not break yet.
+ */
 export const mockDeliveries: Delivery[] = deliveriesSeed;
 export const mockMerchants: Merchant[] = merchantsSeed;
 export const mockDeliverymen: Deliveryman[] = deliverymenSeed;
@@ -35,7 +33,9 @@ export const mockTransactions: Transaction[] = transactionsSeed;
 export const mockAccounts: Account[] = accountsSeed;
 export const mockReports: Report[] = reportsSeed;
 
-// Async accessors for future real backend integration
+/**
+ * Async accessors for future migration.
+ */
 export async function listDeliveries(): Promise<Delivery[]> {
   return deliveriesSeed;
 }
@@ -64,7 +64,9 @@ export async function listReports(): Promise<Report[]> {
   return reportsSeed;
 }
 
-// Optional sync getters
+/**
+ * Optional sync getters.
+ */
 export function getDeliveries(): Delivery[] {
   return deliveriesSeed;
 }
