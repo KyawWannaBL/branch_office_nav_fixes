@@ -1,6 +1,6 @@
 create extension if not exists pgcrypto;
 
-alter table if exists public.profiles
+alter table if exists public.user_profiles
   add column if not exists role text,
   add column if not exists role_code text,
   add column if not exists app_role text,
@@ -138,15 +138,15 @@ with check (public.is_superadmin());
 update auth.users
 set raw_app_meta_data =
   coalesce(raw_app_meta_data, '{}'::jsonb) ||
-  '{"role":"SYS","role_code":"SYS","app_role":"SYS","user_role":"SYS"}'::jsonb
+  '{"role":"super-admin","role_code":"super-admin","app_role":"super-admin","user_role":"super-admin"}'::jsonb
 where email = 'md@britiumexpress.com';
 
-update public.profiles
+update public.user_profiles
 set
-  role = 'SYS',
-  role_code = 'SYS',
-  app_role = 'SYS',
-  user_role = 'SYS',
+  role = 'super-admin',
+  role_code = 'super-admin',
+  app_role = 'super-admin',
+  user_role = 'super-admin',
   authority_level = 'L5',
   data_scope = 'S5',
   must_change_password = false,

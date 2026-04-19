@@ -1,24 +1,38 @@
-
 DO $$
 DECLARE
   v_merchant_id UUID;
   v_ygn_id UUID;
 BEGIN
+  -- 1. Try to find an existing admin
   SELECT id INTO v_merchant_id FROM public.user_profiles 
-  WHERE role IN ('super-admin','admin','super_admin') 
+  WHERE role IN ('super-admin','admin') 
   LIMIT 1;
   
+  -- 2. IF NONE EXISTS, CREATE A DUMMY SYSTEM ADMIN
   IF v_merchant_id IS NULL THEN
-    SELECT id INTO v_merchant_id FROM public.user_profiles LIMIT 1;
+    v_merchant_id := gen_random_uuid();
+    
+    -- Insert into Supabase Auth to satisfy foreign key constraints
+    INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+    VALUES ('00000000-0000-0000-0000-000000000000', v_merchant_id, 'authenticated', 'authenticated', 'admin@britium.com', 'dummy_password', now(), now(), now())
+    ON CONFLICT DO NOTHING;
+
+    -- Insert into your User Profiles table
+    INSERT INTO public.user_profiles (id, email, full_name, role)
+    VALUES (v_merchant_id, 'admin@britium.com', 'Local Admin', 'super-admin')
+    ON CONFLICT DO NOTHING;
+    
+    RAISE NOTICE 'Created dummy admin user: %', v_merchant_id;
   END IF;
   
-  SELECT id INTO v_ygn_id FROM public.warehouses WHERE code = 'YGN-HUB-01' LIMIT 1;
+  -- 3. Find the origin warehouse
+  SELECT id INTO v_ygn_id FROM public.warehouses WHERE code = 'YGN-HUB' LIMIT 1;
   
-  IF v_merchant_id IS NULL THEN
-    RAISE NOTICE 'No user profile found, aborting';
-    RETURN;
+  IF v_ygn_id IS NULL THEN
+    RAISE EXCEPTION 'Warehouse YGN-HUB not found. Aborting shipment seed.';
   END IF;
 
+  -- 4. Insert the mock shipments
   INSERT INTO public.shipments (awb, merchant_id, service_type, status, cod_amount, shipping_fee, payment_method, payment_status, sender, recipient, package_details, created_by, origin_warehouse_id, created_at)
   VALUES
     ('BX-2026-00001', v_merchant_id, 'express',  'delivered',        15000, 4500, 'cod',     'verified',  '{"name":"Aung Thu Shop","phone":"+95911111111","address":{"city":"Yangon"}}',      '{"name":"Ko Kyaw Zin","phone":"+95922222222","address":{"street":"15 Zay St","city":"Mandalay"}}',       '{"weight":2.5,"description":"Electronics"}',     v_merchant_id, v_ygn_id, NOW()-INTERVAL'10 days'),
@@ -43,5 +57,5 @@ BEGIN
     ('BX-2026-00020', v_merchant_id, 'standard', 'pending',          13500, 2600, 'cod',     'pending',   '{"name":"Star Cosmetics","phone":"+95911111130","address":{"city":"Yangon"}}',     '{"name":"Ma Wai Phyo Oo","phone":"+95922222241","address":{"street":"77 Pyinmana","city":"Naypyidaw"}}','{"weight":0.9,"description":"Skincare"}',        v_merchant_id, v_ygn_id, NOW()-INTERVAL'1 hour')
   ON CONFLICT (awb) DO NOTHING;
   
-  RAISE NOTICE 'Shipments seeded. merchant_id=%', v_merchant_id;
+  RAISE NOTICE 'Shipments seeded successfully. Admin ID used: %', v_merchant_id;
 END $$;

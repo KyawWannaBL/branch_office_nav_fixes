@@ -1,173 +1,70 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase/client";
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
-  session: Session | null;
-  user: User | null;
+  user: any | null;
+  session: any | null;
   loading: boolean;
-  initialized: boolean;
-  roleCode: string;
-  isSuperAdmin: boolean;
-  refreshUser: () => Promise<void>;
-  signInWithPassword: (email: string, password: string) => Promise<void>;
-  signInWithOtp: (email: string, redirectTo?: string) => Promise<void>;
+  refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function normalizeToken(value?: string | null) {
-  return (value ?? "").trim().replace(/[\s-]+/g, "_").toUpperCase();
-}
-
-async function resolveRoleCode(user: User | null): Promise<string> {
-  if (!user) return "";
-
-  const directRole =
-    normalizeToken((user.app_metadata as any)?.role_code) ||
-    normalizeToken((user.app_metadata as any)?.role) ||
-    normalizeToken((user.user_metadata as any)?.role_code) ||
-    normalizeToken((user.user_metadata as any)?.role);
-
-  if (directRole) return directRole;
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role, role_code, app_role, user_role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (error) return "";
-
-    const row: any = data || {};
-    return (
-      normalizeToken(row.role_code) ||
-      normalizeToken(row.role) ||
-      normalizeToken(row.app_role) ||
-      normalizeToken(row.user_role) ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [roleCode, setRoleCode] = useState("");
+  const [user, setUser] = useState<any | null>(null);
+  const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
 
-  const hydrate = useCallback(async () => {
-    setLoading(true);
-    try {
-      const {
-        data: { session: nextSession },
-      } = await supabase.auth.getSession();
+  const refresh = async () => {
+    const { data } = await supabase.auth.getSession();
+    setSession(data.session ?? null);
+    setUser(data.session?.user ?? null);
+  };
 
-      const nextUser = nextSession?.user ?? null;
-      setSession(nextSession ?? null);
-      setUser(nextUser);
-
-      const nextRoleCode = await resolveRoleCode(nextUser);
-      setRoleCode(nextRoleCode);
-    } finally {
-      setLoading(false);
-      setInitialized(true);
-    }
-  }, []);
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
+  };
 
   useEffect(() => {
-    let active = true;
+    let mounted = true;
 
-    void (async () => {
-      if (!active) return;
-      await hydrate();
-    })();
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setSession(data.session ?? null);
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+    };
+
+    init();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      if (!active) return;
-
-      const nextUser = nextSession?.user ?? null;
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession ?? null);
-      setUser(nextUser);
-
-      const nextRoleCode = await resolveRoleCode(nextUser);
-      if (!active) return;
-      setRoleCode(nextRoleCode);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
-      setInitialized(true);
     });
 
     return () => {
-      active = false;
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, [hydrate]);
-
-  const signInWithPassword = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
   }, []);
 
-  const signInWithOtp = useCallback(async (email: string, redirectTo?: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
-    });
-    if (error) throw error;
-  }, []);
-
-  const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  }, []);
-
-  const refreshUser = useCallback(async () => {
-    await hydrate();
-  }, [hydrate]);
-
-  const value = useMemo<AuthContextValue>(() => {
-    const email = (user?.email ?? "").toLowerCase();
-    const isSuperAdmin =
-      email === "md@britiumexpress.com" ||
-      ["SYS", "SUPER_ADMIN", "ADMIN"].includes(roleCode);
-
-    return {
-      session,
+  const value = useMemo(
+    () => ({
       user,
+      session,
       loading,
-      initialized,
-      roleCode,
-      isSuperAdmin,
-      refreshUser,
-      signInWithPassword,
-      signInWithOtp,
+      refresh,
       signOut,
-    };
-  }, [
-    session,
-    user,
-    loading,
-    initialized,
-    roleCode,
-    refreshUser,
-    signInWithPassword,
-    signInWithOtp,
-    signOut,
-  ]);
+    }),
+    [user, session, loading]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -175,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
+    throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
 }

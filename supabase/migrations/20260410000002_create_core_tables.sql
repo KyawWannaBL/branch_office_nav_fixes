@@ -1,4 +1,10 @@
--- Drop existing types and tables if they exist
+-- ============================================================
+-- BRITIUM EXPRESS - CORE TABLES MIGRATION
+-- ============================================================
+
+-- -------------------------------------------------------
+-- 1. CLEANUP (Drop existing objects if they exist)
+-- -------------------------------------------------------
 DROP TABLE IF EXISTS public.delivery_history CASCADE;
 DROP TABLE IF EXISTS public.deliveries CASCADE;
 DROP TABLE IF EXISTS public.manifest_items CASCADE;
@@ -8,7 +14,6 @@ DROP TABLE IF EXISTS public.branches CASCADE;
 DROP TABLE IF EXISTS public.warehouses CASCADE;
 DROP TABLE IF EXISTS public.vehicles CASCADE;
 DROP TABLE IF EXISTS public.routes CASCADE;
-
 DROP TYPE IF EXISTS public.shipment_status CASCADE;
 DROP TYPE IF EXISTS public.delivery_status CASCADE;
 DROP TYPE IF EXISTS public.service_type CASCADE;
@@ -18,76 +23,45 @@ DROP TYPE IF EXISTS public.warehouse_type CASCADE;
 DROP TYPE IF EXISTS public.vehicle_type CASCADE;
 DROP TYPE IF EXISTS public.manifest_status CASCADE;
 
--- Create enums
 CREATE TYPE public.shipment_status AS ENUM (
-  'draft',
-  'pending',
-  'in_transit',
-  'out_for_delivery',
-  'delivered',
-  'failed',
-  'returned',
-  'cancelled'
+  'draft', 'pending', 'in_transit', 'out_for_delivery', 
+  'delivered', 'failed', 'returned', 'cancelled'
 );
 
 CREATE TYPE public.delivery_status AS ENUM (
-  'pending',
-  'assigned',
-  'picked_up',
-  'in_transit',
-  'out_for_delivery',
-  'delivered',
-  'failed',
-  'returned',
-  'cancelled'
+  'pending', 'assigned', 'picked_up', 'in_transit', 
+  'out_for_delivery', 'delivered', 'failed', 'returned', 'cancelled'
 );
 
 CREATE TYPE public.service_type AS ENUM (
-  'standard',
-  'express',
-  'same_day',
-  'next_day',
-  'economy'
+  'standard', 'express', 'same_day', 'next_day', 'economy'
 );
 
 CREATE TYPE public.payment_method AS ENUM (
-  'cod',
-  'prepaid',
-  'credit',
-  'bank_transfer'
+  'cod', 'prepaid', 'credit', 'bank_transfer'
 );
 
 CREATE TYPE public.payment_status AS ENUM (
-  'pending',
-  'collected',
-  'deposited',
-  'verified',
-  'failed'
+  'pending', 'collected', 'deposited', 'verified', 'failed'
 );
 
 CREATE TYPE public.warehouse_type AS ENUM (
-  'hub',
-  'branch',
-  'sorting-center',
-  'pickup-point'
+  'hub', 'branch', 'depot', 'transit', 'outpost'
 );
 
 CREATE TYPE public.vehicle_type AS ENUM (
-  'bike',
-  'van',
-  'truck',
-  'car'
+  'bike', 'van', 'truck', 'car'
 );
 
 CREATE TYPE public.manifest_status AS ENUM (
-  'draft',
-  'assigned',
-  'in_progress',
-  'completed',
-  'cancelled'
+  'draft', 'assigned', 'in_progress', 'completed', 'cancelled'
 );
 
--- Warehouses table
+-- -------------------------------------------------------
+-- 3. CORE TABLES
+-- -------------------------------------------------------
+
+-- Warehouses
 CREATE TABLE public.warehouses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
@@ -103,7 +77,7 @@ CREATE TABLE public.warehouses (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Branches table
+-- Branches
 CREATE TABLE public.branches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
@@ -117,7 +91,7 @@ CREATE TABLE public.branches (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Vehicles table
+-- Vehicles
 CREATE TABLE public.vehicles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   registration_number TEXT UNIQUE NOT NULL,
@@ -132,7 +106,7 @@ CREATE TABLE public.vehicles (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Shipments table
+-- Shipments
 CREATE TABLE public.shipments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   awb TEXT UNIQUE NOT NULL,
@@ -140,33 +114,29 @@ CREATE TABLE public.shipments (
   service_type public.service_type NOT NULL,
   status public.shipment_status DEFAULT 'pending',
   
-  -- Sender info
+  -- Entity Info
   sender JSONB NOT NULL,
-  
-  -- Recipient info
   recipient JSONB NOT NULL,
-  
-  -- Package details
   package_details JSONB NOT NULL,
   
-  -- Pricing
+  -- Financials
   declared_value DECIMAL(10, 2),
   cod_amount DECIMAL(10, 2),
   shipping_fee DECIMAL(10, 2),
   payment_method public.payment_method,
   payment_status public.payment_status DEFAULT 'pending',
   
-  -- Tracking
+  -- Routing
   origin_warehouse_id UUID REFERENCES public.warehouses(id),
   destination_warehouse_id UUID REFERENCES public.warehouses(id),
   current_location JSONB,
   
-  -- Dates
+  -- Timestamps
   pickup_date TIMESTAMPTZ,
   expected_delivery_date TIMESTAMPTZ,
   actual_delivery_date TIMESTAMPTZ,
   
-  -- Additional
+  -- Metadata
   special_instructions TEXT,
   proof_of_delivery JSONB,
   created_by UUID REFERENCES public.user_profiles(id),
@@ -174,7 +144,7 @@ CREATE TABLE public.shipments (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Manifests table
+-- Manifests
 CREATE TABLE public.manifests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   manifest_number TEXT UNIQUE NOT NULL,
@@ -183,17 +153,17 @@ CREATE TABLE public.manifests (
   warehouse_id UUID REFERENCES public.warehouses(id) NOT NULL,
   status public.manifest_status DEFAULT 'draft',
   
-  -- Route details
+  -- Route Info
   route_data JSONB,
   planned_route JSONB,
   actual_route JSONB,
   
-  -- Dates
+  -- Timing
   scheduled_date DATE NOT NULL,
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,
   
-  -- Metrics
+  -- Aggregates
   total_shipments INTEGER DEFAULT 0,
   completed_shipments INTEGER DEFAULT 0,
   failed_shipments INTEGER DEFAULT 0,
@@ -204,7 +174,7 @@ CREATE TABLE public.manifests (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Manifest items (junction table)
+-- Manifest Items
 CREATE TABLE public.manifest_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   manifest_id UUID REFERENCES public.manifests(id) ON DELETE CASCADE NOT NULL,
@@ -217,7 +187,7 @@ CREATE TABLE public.manifest_items (
   UNIQUE(manifest_id, shipment_id)
 );
 
--- Deliveries table (tracks individual delivery attempts)
+-- Deliveries
 CREATE TABLE public.deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shipment_id UUID REFERENCES public.shipments(id) NOT NULL,
@@ -225,26 +195,26 @@ CREATE TABLE public.deliveries (
   driver_id UUID REFERENCES public.user_profiles(id),
   status public.delivery_status DEFAULT 'pending',
   
-  -- Attempt tracking
+  -- Attempt State
   attempt_number INTEGER DEFAULT 1,
   max_attempts INTEGER DEFAULT 3,
   
-  -- Timing
+  -- Timing State
   assigned_at TIMESTAMPTZ,
   picked_up_at TIMESTAMPTZ,
   delivered_at TIMESTAMPTZ,
   failed_at TIMESTAMPTZ,
   
-  -- Failure handling
+  -- Resolution State
   failure_reason TEXT,
   failure_category TEXT,
   ndr_case JSONB,
   
-  -- Location
+  -- Spatial State
   current_location JSONB,
   delivery_location JSONB,
   
-  -- Proof
+  -- Verification
   signature JSONB,
   photos TEXT[],
   notes TEXT,
@@ -253,7 +223,7 @@ CREATE TABLE public.deliveries (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Delivery history (audit trail)
+-- Delivery History
 CREATE TABLE public.delivery_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id UUID REFERENCES public.deliveries(id) ON DELETE CASCADE NOT NULL,
@@ -265,7 +235,7 @@ CREATE TABLE public.delivery_history (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Routes table (for route optimization)
+-- Routes
 CREATE TABLE public.routes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -280,7 +250,9 @@ CREATE TABLE public.routes (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Create indexes for performance
+-- -------------------------------------------------------
+-- 4. INDEXES
+-- -------------------------------------------------------
 CREATE INDEX idx_shipments_merchant ON public.shipments(merchant_id);
 CREATE INDEX idx_shipments_status ON public.shipments(status);
 CREATE INDEX idx_shipments_awb ON public.shipments(awb);
@@ -302,7 +274,9 @@ CREATE INDEX idx_manifest_items_shipment ON public.manifest_items(shipment_id);
 CREATE INDEX idx_delivery_history_delivery ON public.delivery_history(delivery_id);
 CREATE INDEX idx_delivery_history_shipment ON public.delivery_history(shipment_id);
 
--- Enable RLS
+-- -------------------------------------------------------
+-- 5. ROW LEVEL SECURITY (RLS)
+-- -------------------------------------------------------
 ALTER TABLE public.warehouses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
@@ -313,9 +287,7 @@ ALTER TABLE public.deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.delivery_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.routes ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies
-
--- Warehouses: authenticated users can view, admins can manage
+-- Warehouses Policies
 CREATE POLICY "Authenticated users can view warehouses"
   ON public.warehouses FOR SELECT
   USING (auth.role() = 'authenticated');
@@ -330,7 +302,7 @@ CREATE POLICY "Admins can manage warehouses"
     )
   );
 
--- Branches: similar to warehouses
+-- Branches Policies
 CREATE POLICY "Authenticated users can view branches"
   ON public.branches FOR SELECT
   USING (auth.role() = 'authenticated');
@@ -345,7 +317,7 @@ CREATE POLICY "Admins can manage branches"
     )
   );
 
--- Vehicles: authenticated users can view, supervisors+ can manage
+-- Vehicles Policies
 CREATE POLICY "Authenticated users can view vehicles"
   ON public.vehicles FOR SELECT
   USING (auth.role() = 'authenticated');
@@ -360,7 +332,7 @@ CREATE POLICY "Supervisors can manage vehicles"
     )
   );
 
--- Shipments: merchants see their own, staff see all
+-- Shipments Policies
 CREATE POLICY "Merchants can view their own shipments"
   ON public.shipments FOR SELECT
   USING (
@@ -393,7 +365,7 @@ CREATE POLICY "Staff can update shipments"
     )
   );
 
--- Manifests: drivers see their own, supervisors see all
+-- Manifests Policies
 CREATE POLICY "Drivers can view their manifests"
   ON public.manifests FOR SELECT
   USING (
@@ -415,7 +387,7 @@ CREATE POLICY "Supervisors can manage manifests"
     )
   );
 
--- Manifest items: follow manifest permissions
+-- Manifest Items Policies
 CREATE POLICY "Users can view manifest items"
   ON public.manifest_items FOR SELECT
   USING (
@@ -443,7 +415,7 @@ CREATE POLICY "Supervisors can manage manifest items"
     )
   );
 
--- Deliveries: drivers see their own, staff see all
+-- Deliveries Policies
 CREATE POLICY "Drivers can view their deliveries"
   ON public.deliveries FOR SELECT
   USING (
@@ -476,7 +448,7 @@ CREATE POLICY "Staff can create deliveries"
     )
   );
 
--- Delivery history: read-only for authorized users
+-- Delivery History Policies
 CREATE POLICY "Authorized users can view delivery history"
   ON public.delivery_history FOR SELECT
   USING (
@@ -498,7 +470,7 @@ CREATE POLICY "System can insert delivery history"
   ON public.delivery_history FOR INSERT
   WITH CHECK (auth.role() = 'authenticated');
 
--- Routes: authenticated users can view, supervisors can manage
+-- Routes Policies
 CREATE POLICY "Authenticated users can view routes"
   ON public.routes FOR SELECT
   USING (auth.role() = 'authenticated');
@@ -513,7 +485,9 @@ CREATE POLICY "Supervisors can manage routes"
     )
   );
 
--- Create updated_at trigger function
+-- -------------------------------------------------------
+-- 6. TRIGGERS & FUNCTIONS
+-- -------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -522,7 +496,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Add triggers for updated_at
 CREATE TRIGGER update_warehouses_updated_at BEFORE UPDATE ON public.warehouses
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
