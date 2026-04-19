@@ -6,7 +6,6 @@ import type {
   Transaction,
   Account,
   Report,
-<<<<<<< HEAD
 } from './lib/index';
 
 /**
@@ -107,7 +106,6 @@ const dataStore = {
 };
 
 export default dataStore;
-=======
 } from '../lib/index';
 
 // Exporting empty arrays to eliminate mock data and fix import errors
@@ -118,4 +116,4 @@ export const mockReceipts: Receipt[] = [];
 export const mockTransactions: Transaction[] = [];
 export const mockAccounts: Account[] = [];
 export const mockReports: Report[] = [];
->>>>>>> e32dd05 (Fix production data module and lib exports)
+e32dd05 (Fix production data module and lib exports)
