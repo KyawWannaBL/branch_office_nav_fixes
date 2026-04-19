@@ -1,660 +1,678 @@
-export const ROUTE_PATHS = {
-  DASHBOARD: '/',
-  SUPERVISOR: '/supervisor',
-  DRIVER: '/driver',
-  WAREHOUSE: '/warehouse',
-  CUSTOMER_SERVICE: '/customer-service',
-  CREATE_DELIVERY: '/create-delivery',
-  ANALYTICS: '/analytics',
-  SETTINGS: '/settings',
-  DATA_ENTRY: '/data-entry',
-  WAYPLAN: '/wayplan',
-  MARKETING: '/marketing',
-  HR: '/hr',
-  FINANCE: '/finance',
-  MERCHANT: '/merchant',
-  CUSTOMER: '/customer',
-  QR_CODE: '/qr-code',
-  BRANCH_OFFICE: '/branch-office',
-} as const;
+import {
+  Delivery,
+  Merchant,
+  Deliveryman,
+  Receipt,
+  Transaction,
+  Account,
+  Report,
+  DeliveryStatus,
+  PaymentStatus,
+} from '../lib/index'; // Updated import path to match standard Vite resolution
 
-export type RoutePathKey = keyof typeof ROUTE_PATHS;
-export type RoutePath = typeof ROUTE_PATHS[RoutePathKey];
+export const mockDeliveries: Delivery[] = [
+  {
+    id: 'DEL001',
+    wayNumber: 'WAY-2026-001234',
+    merchantId: 'MER001',
+    merchantName: 'TechMart Electronics',
+    deliverymanId: 'DLV001',
+    deliverymanName: 'John Smith',
+    senderName: 'TechMart Warehouse',
+    senderPhone: '+1-555-0101',
+    senderAddress: '123 Industrial Park, Downtown',
+    recipientName: 'Sarah Johnson',
+    recipientPhone: '+1-555-0201',
+    recipientAddress: '456 Oak Street, Apartment 3B',
+    recipientTown: 'Riverside',
+    packageDescription: 'Laptop Computer - Dell XPS 15',
+    packageWeight: 2.5,
+    packageValue: 1299.99,
+    deliveryFee: 15.00,
+    codAmount: 1299.99,
+    status: DeliveryStatus.OUT_FOR_DELIVERY,
+    createdAt: '2026-04-07T09:30:00Z',
+    updatedAt: '2026-04-08T14:20:00Z',
+    pickupDate: '2026-04-07T11:00:00Z',
+    notes: 'Fragile - Handle with care',
+  },
+  {
+    id: 'DEL002',
+    wayNumber: 'WAY-2026-001235',
+    merchantId: 'MER002',
+    merchantName: 'Fashion Hub Boutique',
+    deliverymanId: 'DLV002',
+    deliverymanName: 'Maria Garcia',
+    senderName: 'Fashion Hub Store',
+    senderPhone: '+1-555-0102',
+    senderAddress: '789 Main Street, Shopping District',
+    recipientName: 'Michael Chen',
+    recipientPhone: '+1-555-0202',
+    recipientAddress: '321 Maple Avenue, Suite 12',
+    recipientTown: 'Hillside',
+    packageDescription: 'Clothing Package - 3 items',
+    packageWeight: 1.2,
+    packageValue: 249.99,
+    deliveryFee: 8.50,
+    status: DeliveryStatus.DELIVERED,
+    createdAt: '2026-04-06T14:15:00Z',
+    updatedAt: '2026-04-07T16:45:00Z',
+    pickupDate: '2026-04-06T15:30:00Z',
+    deliveryDate: '2026-04-07T16:45:00Z',
+  },
+  {
+    id: 'DEL003',
+    wayNumber: 'WAY-2026-001236',
+    merchantId: 'MER003',
+    merchantName: 'HomeGoods Plus',
+    deliverymanId: 'DLV001',
+    deliverymanName: 'John Smith',
+    senderName: 'HomeGoods Warehouse',
+    senderPhone: '+1-555-0103',
+    senderAddress: '555 Commerce Boulevard',
+    recipientName: 'Emily Rodriguez',
+    recipientPhone: '+1-555-0203',
+    recipientAddress: '987 Pine Road, House 45',
+    recipientTown: 'Lakewood',
+    packageDescription: 'Kitchen Appliances - Blender Set',
+    packageWeight: 3.8,
+    packageValue: 189.99,
+    deliveryFee: 12.00,
+    codAmount: 189.99,
+    status: DeliveryStatus.IN_TRANSIT,
+    createdAt: '2026-04-08T08:00:00Z',
+    updatedAt: '2026-04-08T12:30:00Z',
+    pickupDate: '2026-04-08T09:15:00Z',
+  },
+  {
+    id: 'DEL004',
+    wayNumber: 'WAY-2026-001237',
+    merchantId: 'MER001',
+    merchantName: 'TechMart Electronics',
+    senderName: 'TechMart Warehouse',
+    senderPhone: '+1-555-0101',
+    senderAddress: '123 Industrial Park, Downtown',
+    recipientName: 'David Lee',
+    recipientPhone: '+1-555-0204',
+    recipientAddress: '654 Elm Street, Unit 7',
+    recipientTown: 'Riverside',
+    packageDescription: 'Smartphone - iPhone 15 Pro',
+    packageWeight: 0.5,
+    packageValue: 999.99,
+    deliveryFee: 10.00,
+    status: DeliveryStatus.PENDING,
+    createdAt: '2026-04-08T15:45:00Z',
+    updatedAt: '2026-04-08T15:45:00Z',
+  },
+  {
+    id: 'DEL005',
+    wayNumber: 'WAY-2026-001238',
+    merchantId: 'MER004',
+    merchantName: 'BookWorld Online',
+    deliverymanId: 'DLV003',
+    deliverymanName: 'James Wilson',
+    senderName: 'BookWorld Distribution',
+    senderPhone: '+1-555-0104',
+    senderAddress: '222 Library Lane',
+    recipientName: 'Lisa Anderson',
+    recipientPhone: '+1-555-0205',
+    recipientAddress: '111 Cedar Court',
+    recipientTown: 'Greenfield',
+    packageDescription: 'Books - 5 Hardcover Novels',
+    packageWeight: 2.1,
+    packageValue: 89.95,
+    deliveryFee: 7.50,
+    status: DeliveryStatus.FAILED,
+    createdAt: '2026-04-07T10:20:00Z',
+    updatedAt: '2026-04-08T11:00:00Z',
+    pickupDate: '2026-04-07T12:00:00Z',
+    notes: 'Recipient not available - Rescheduling required',
+  },
+  {
+    id: 'DEL006',
+    wayNumber: 'WAY-2026-001239',
+    merchantId: 'MER002',
+    merchantName: 'Fashion Hub Boutique',
+    deliverymanId: 'DLV002',
+    deliverymanName: 'Maria Garcia',
+    senderName: 'Fashion Hub Store',
+    senderPhone: '+1-555-0102',
+    senderAddress: '789 Main Street, Shopping District',
+    recipientName: 'Robert Taylor',
+    recipientPhone: '+1-555-0206',
+    recipientAddress: '888 Birch Boulevard',
+    recipientTown: 'Hillside',
+    packageDescription: 'Shoes - Designer Sneakers',
+    packageWeight: 1.0,
+    packageValue: 159.99,
+    deliveryFee: 8.00,
+    status: DeliveryStatus.RETURNED,
+    createdAt: '2026-04-05T13:30:00Z',
+    updatedAt: '2026-04-07T09:15:00Z',
+    pickupDate: '2026-04-05T15:00:00Z',
+    notes: 'Wrong size - Customer requested return',
+  },
+];
 
-export type DeliveryStatus = 'pending' | 'assigned' | 'picked-up' | 'in-transit' | 'out-for-delivery' | 'delivered' | 'failed' | 'cancelled' | 'returned';
-export type ServiceType = 'standard' | 'express' | 'same-day' | 'next-day' | 'economy';
-export type PaymentMethod = 'cod' | 'prepaid' | 'credit';
-export type TaskStatus = 'pending' | 'assigned' | 'in-progress' | 'completed' | 'failed';
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type EmployeeRole = 
-  | 'super-admin'
-  | 'admin' 
-  | 'branch-office'
-  | 'supervisor' 
-  | 'wayplan-manager'
-  | 'driver' 
-  | 'rider'
-  | 'warehouse-staff' 
-  | 'customer-service' 
-  | 'data-entry'
-  | 'marketing'
-  | 'hr-admin'
-  | 'finance'
-  | 'merchant'
-  | 'customer';
-export type VehicleType = 'bike' | 'van' | 'truck';
+export const mockMerchants: Merchant[] = [
+  {
+    id: 'MER001',
+    businessName: 'TechMart Electronics',
+    contactName: 'Richard Thompson',
+    contactPhone: '+1-555-0101',
+    contactEmail: 'richard@techmart.com',
+    address: '123 Industrial Park, Downtown',
+    town: 'Riverside',
+    pricingTier: 'enterprise',
+    totalOrders: 1247,
+    activeOrders: 23,
+    completedOrders: 1198,
+    outstandingBalance: 3450.75,
+    status: 'active',
+    createdAt: '2024-01-15T00:00:00Z',
+    lastOrderDate: '2026-04-08T15:45:00Z',
+  },
+  {
+    id: 'MER002',
+    businessName: 'Fashion Hub Boutique',
+    contactName: 'Amanda Martinez',
+    contactPhone: '+1-555-0102',
+    contactEmail: 'amanda@fashionhub.com',
+    address: '789 Main Street, Shopping District',
+    town: 'Hillside',
+    pricingTier: 'premium',
+    totalOrders: 892,
+    activeOrders: 15,
+    completedOrders: 865,
+    outstandingBalance: 1890.50,
+    status: 'active',
+    createdAt: '2024-03-22T00:00:00Z',
+    lastOrderDate: '2026-04-08T10:20:00Z',
+  },
+  {
+    id: 'MER003',
+    businessName: 'HomeGoods Plus',
+    contactName: 'Steven Park',
+    contactPhone: '+1-555-0103',
+    contactEmail: 'steven@homegoods.com',
+    address: '555 Commerce Boulevard',
+    town: 'Lakewood',
+    pricingTier: 'standard',
+    totalOrders: 456,
+    activeOrders: 8,
+    completedOrders: 442,
+    outstandingBalance: 890.25,
+    status: 'active',
+    createdAt: '2024-06-10T00:00:00Z',
+    lastOrderDate: '2026-04-08T08:00:00Z',
+  },
+  {
+    id: 'MER004',
+    businessName: 'BookWorld Online',
+    contactName: 'Patricia Collins',
+    contactPhone: '+1-555-0104',
+    contactEmail: 'patricia@bookworld.com',
+    address: '222 Library Lane',
+    town: 'Greenfield',
+    pricingTier: 'standard',
+    totalOrders: 634,
+    activeOrders: 12,
+    completedOrders: 615,
+    outstandingBalance: 1245.00,
+    status: 'active',
+    createdAt: '2024-02-28T00:00:00Z',
+    lastOrderDate: '2026-04-07T10:20:00Z',
+  },
+  {
+    id: 'MER005',
+    businessName: 'Sports Gear Pro',
+    contactName: 'Kevin Brown',
+    contactPhone: '+1-555-0105',
+    contactEmail: 'kevin@sportsgear.com',
+    address: '333 Athletic Avenue',
+    town: 'Riverside',
+    pricingTier: 'premium',
+    totalOrders: 723,
+    activeOrders: 0,
+    completedOrders: 710,
+    outstandingBalance: 5670.80,
+    status: 'suspended',
+    createdAt: '2024-04-05T00:00:00Z',
+    lastOrderDate: '2026-03-15T00:00:00Z',
+  },
+];
 
-export interface Address {
-  street: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
-}
+export const mockDeliverymen: Deliveryman[] = [
+  {
+    id: 'DLV001',
+    name: 'John Smith',
+    phone: '+1-555-1001',
+    email: 'john.smith@britium.com',
+    vehicleType: 'van',
+    vehicleNumber: 'VAN-2024-001',
+    assignedZone: 'Riverside District',
+    activeDeliveries: 8,
+    completedDeliveries: 1456,
+    completionRate: 97.8,
+    averageRating: 4.8,
+    status: 'active',
+    cashAdvance: 250.00,
+    createdAt: '2024-01-10T00:00:00Z',
+    lastActiveDate: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'DLV002',
+    name: 'Maria Garcia',
+    phone: '+1-555-1002',
+    email: 'maria.garcia@britium.com',
+    vehicleType: 'motorcycle',
+    vehicleNumber: 'MOTO-2024-015',
+    assignedZone: 'Hillside Area',
+    activeDeliveries: 12,
+    completedDeliveries: 2134,
+    completionRate: 98.5,
+    averageRating: 4.9,
+    status: 'active',
+    cashAdvance: 180.00,
+    createdAt: '2023-11-20T00:00:00Z',
+    lastActiveDate: '2026-04-08T15:45:00Z',
+  },
+  {
+    id: 'DLV003',
+    name: 'James Wilson',
+    phone: '+1-555-1003',
+    email: 'james.wilson@britium.com',
+    vehicleType: 'van',
+    vehicleNumber: 'VAN-2024-007',
+    assignedZone: 'Greenfield Zone',
+    activeDeliveries: 6,
+    completedDeliveries: 987,
+    completionRate: 96.2,
+    averageRating: 4.7,
+    status: 'active',
+    cashAdvance: 320.00,
+    createdAt: '2024-02-15T00:00:00Z',
+    lastActiveDate: '2026-04-08T14:30:00Z',
+  },
+  {
+    id: 'DLV004',
+    name: 'Linda Davis',
+    phone: '+1-555-1004',
+    email: 'linda.davis@britium.com',
+    vehicleType: 'motorcycle',
+    vehicleNumber: 'MOTO-2024-022',
+    assignedZone: 'Lakewood District',
+    activeDeliveries: 0,
+    completedDeliveries: 1678,
+    completionRate: 97.1,
+    averageRating: 4.6,
+    status: 'offline',
+    cashAdvance: 0.00,
+    createdAt: '2023-12-05T00:00:00Z',
+    lastActiveDate: '2026-04-07T18:00:00Z',
+  },
+  {
+    id: 'DLV005',
+    name: 'Carlos Rodriguez',
+    phone: '+1-555-1005',
+    email: 'carlos.rodriguez@britium.com',
+    vehicleType: 'truck',
+    vehicleNumber: 'TRUCK-2024-003',
+    assignedZone: 'Industrial Zone',
+    activeDeliveries: 4,
+    completedDeliveries: 756,
+    completionRate: 95.8,
+    averageRating: 4.5,
+    status: 'active',
+    cashAdvance: 450.00,
+    createdAt: '2024-03-01T00:00:00Z',
+    lastActiveDate: '2026-04-08T13:20:00Z',
+  },
+];
 
-export interface Contact {
-  name: string;
-  phone: string;
-  email?: string;
-}
+export const mockReceipts: Receipt[] = [
+  {
+    id: 'RCP001',
+    receiptNumber: 'RCP-2026-04-001',
+    merchantId: 'MER001',
+    merchantName: 'TechMart Electronics',
+    amount: 3450.75,
+    deliveryCount: 245,
+    periodStart: '2026-03-01T00:00:00Z',
+    periodEnd: '2026-03-31T23:59:59Z',
+    status: PaymentStatus.OVERDUE,
+    issuedDate: '2026-04-01T00:00:00Z',
+    dueDate: '2026-04-07T23:59:59Z',
+    notes: 'Payment overdue - Follow up required',
+  },
+  {
+    id: 'RCP002',
+    receiptNumber: 'RCP-2026-04-002',
+    merchantId: 'MER002',
+    merchantName: 'Fashion Hub Boutique',
+    amount: 1890.50,
+    deliveryCount: 178,
+    periodStart: '2026-03-01T00:00:00Z',
+    periodEnd: '2026-03-31T23:59:59Z',
+    status: PaymentStatus.PAID,
+    issuedDate: '2026-04-01T00:00:00Z',
+    dueDate: '2026-04-15T23:59:59Z',
+    paidDate: '2026-04-05T10:30:00Z',
+  },
+  {
+    id: 'RCP003',
+    receiptNumber: 'RCP-2026-04-003',
+    merchantId: 'MER003',
+    merchantName: 'HomeGoods Plus',
+    amount: 890.25,
+    deliveryCount: 89,
+    periodStart: '2026-03-01T00:00:00Z',
+    periodEnd: '2026-03-31T23:59:59Z',
+    status: PaymentStatus.PENDING,
+    issuedDate: '2026-04-01T00:00:00Z',
+    dueDate: '2026-04-15T23:59:59Z',
+  },
+  {
+    id: 'RCP004',
+    receiptNumber: 'RCP-2026-04-004',
+    merchantId: 'MER004',
+    merchantName: 'BookWorld Online',
+    amount: 1245.00,
+    deliveryCount: 156,
+    periodStart: '2026-03-01T00:00:00Z',
+    periodEnd: '2026-03-31T23:59:59Z',
+    status: PaymentStatus.PENDING,
+    issuedDate: '2026-04-01T00:00:00Z',
+    dueDate: '2026-04-15T23:59:59Z',
+  },
+  {
+    id: 'RCP005',
+    receiptNumber: 'RCP-2026-03-015',
+    merchantId: 'MER001',
+    merchantName: 'TechMart Electronics',
+    amount: 4120.00,
+    deliveryCount: 298,
+    periodStart: '2026-02-01T00:00:00Z',
+    periodEnd: '2026-02-28T23:59:59Z',
+    status: PaymentStatus.PAID,
+    issuedDate: '2026-03-01T00:00:00Z',
+    dueDate: '2026-03-15T23:59:59Z',
+    paidDate: '2026-03-10T14:20:00Z',
+  },
+];
 
-export interface Shipment {
-  id: string;
-  awb: string;
-  serviceType: ServiceType;
-  status: DeliveryStatus;
-  sender: Contact & { address: Address };
-  recipient: Contact & { address: Address };
-  packageDetails: {
-    weight: number;
-    dimensions: {
-      length: number;
-      width: number;
-      height: number;
-    };
-    value: number;
-    description: string;
-  };
-  codAmount?: number;
-  paymentMethod: PaymentMethod;
-  specialInstructions?: string;
-  createdAt: string;
-  updatedAt: string;
-  estimatedDelivery?: string;
-  actualDelivery?: string;
-  branchId: string;
-  warehouseId?: string;
-}
+export const mockTransactions: Transaction[] = [
+  {
+    id: 'TXN001',
+    type: 'payment',
+    amount: 1890.50,
+    description: 'Receipt payment - March 2026',
+    relatedEntity: 'Fashion Hub Boutique',
+    relatedEntityType: 'merchant',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-04-05T10:30:00Z',
+    processedAt: '2026-04-05T10:30:00Z',
+  },
+  {
+    id: 'TXN002',
+    type: 'advance',
+    amount: 250.00,
+    description: 'Cash advance for deliveries',
+    relatedEntity: 'John Smith',
+    relatedEntityType: 'deliveryman',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-04-01T08:00:00Z',
+    processedAt: '2026-04-01T08:00:00Z',
+  },
+  {
+    id: 'TXN003',
+    type: 'refund',
+    amount: 159.99,
+    description: 'Refund for returned delivery WAY-2026-001239',
+    relatedEntity: 'WAY-2026-001239',
+    relatedEntityType: 'delivery',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-04-07T09:15:00Z',
+    processedAt: '2026-04-07T11:30:00Z',
+  },
+  {
+    id: 'TXN004',
+    type: 'payment',
+    amount: 4120.00,
+    description: 'Receipt payment - February 2026',
+    relatedEntity: 'TechMart Electronics',
+    relatedEntityType: 'merchant',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-03-10T14:20:00Z',
+    processedAt: '2026-03-10T14:20:00Z',
+  },
+  {
+    id: 'TXN005',
+    type: 'advance',
+    amount: 320.00,
+    description: 'Cash advance for deliveries',
+    relatedEntity: 'James Wilson',
+    relatedEntityType: 'deliveryman',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-04-03T09:00:00Z',
+    processedAt: '2026-04-03T09:00:00Z',
+  },
+  {
+    id: 'TXN006',
+    type: 'adjustment',
+    amount: -50.00,
+    description: 'Billing adjustment - Overcharge correction',
+    relatedEntity: 'HomeGoods Plus',
+    relatedEntityType: 'merchant',
+    status: PaymentStatus.PAID,
+    createdAt: '2026-04-06T15:45:00Z',
+    processedAt: '2026-04-06T16:00:00Z',
+    notes: 'Corrected delivery fee calculation error',
+  },
+];
 
-export interface Delivery {
-  id: string;
-  shipmentId: string;
-  manifestId?: string;
-  driverId?: string;
-  status: DeliveryStatus;
-  assignedAt?: string;
-  pickedUpAt?: string;
-  deliveredAt?: string;
-  failedAt?: string;
-  failureReason?: string;
-  proofOfDelivery?: {
-    signature?: string;
-    photo?: string;
-    otp?: string;
-    gpsLocation: {
-      lat: number;
-      lng: number;
-    };
-    timestamp: string;
-    recipientName: string;
-  };
-  ndrCase?: {
-    id: string;
-    reason: string;
-    attempts: number;
-    nextAttemptDate?: string;
-  };
-  codCollected?: number;
-  notes?: string;
-}
+export const mockAccounts: Account[] = [
+  {
+    id: 'ACC001',
+    name: 'TechMart Electronics',
+    type: 'merchant',
+    balance: -3450.75,
+    pendingAmount: 450.00,
+    totalReceived: 45670.00,
+    totalPaid: 42219.25,
+    lastTransactionDate: '2026-03-10T14:20:00Z',
+  },
+  {
+    id: 'ACC002',
+    name: 'Fashion Hub Boutique',
+    type: 'merchant',
+    balance: 0.00,
+    pendingAmount: 0.00,
+    totalReceived: 28450.00,
+    totalPaid: 28450.00,
+    lastTransactionDate: '2026-04-05T10:30:00Z',
+  },
+  {
+    id: 'ACC003',
+    name: 'HomeGoods Plus',
+    type: 'merchant',
+    balance: -890.25,
+    pendingAmount: 890.25,
+    totalReceived: 12340.00,
+    totalPaid: 11449.75,
+    lastTransactionDate: '2026-04-06T16:00:00Z',
+  },
+  {
+    id: 'ACC004',
+    name: 'John Smith',
+    type: 'deliveryman',
+    balance: 250.00,
+    pendingAmount: 0.00,
+    totalReceived: 3450.00,
+    totalPaid: 3200.00,
+    lastTransactionDate: '2026-04-01T08:00:00Z',
+  },
+  {
+    id: 'ACC005',
+    name: 'Maria Garcia',
+    type: 'deliveryman',
+    balance: 180.00,
+    pendingAmount: 0.00,
+    totalReceived: 5230.00,
+    totalPaid: 5050.00,
+    lastTransactionDate: '2026-03-28T10:00:00Z',
+  },
+  {
+    id: 'ACC006',
+    name: 'System Account',
+    type: 'system',
+    balance: 125670.50,
+    pendingAmount: 4340.25,
+    totalReceived: 456780.00,
+    totalPaid: 331109.50,
+    lastTransactionDate: '2026-04-08T15:30:00Z',
+  },
+];
 
-export interface Manifest {
-  id: string;
-  manifestNumber: string;
-  driverId: string;
-  vehicleId: string;
-  branchId: string;
-  status: 'draft' | 'active' | 'completed' | 'cancelled';
-  deliveries: string[];
-  route: {
-    waypoints: Array<{
-      deliveryId: string;
-      sequence: number;
-      address: Address;
-      estimatedArrival: string;
-    }>;
-    totalDistance: number;
-    estimatedDuration: number;
-  };
-  createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  createdBy: string;
-}
-
-export interface Employee {
-  id: string;
-  employeeNumber: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: EmployeeRole;
-  branchId: string;
-  status: 'active' | 'inactive' | 'on-leave';
-  vehicleAssignment?: {
-    vehicleId: string;
-    vehicleType: VehicleType;
-    licensePlate: string;
-  };
-  performance?: {
-    totalDeliveries: number;
-    successRate: number;
-    averageRating: number;
-    onTimeRate: number;
-  };
-  currentLocation?: {
-    lat: number;
-    lng: number;
-    timestamp: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Task {
-  id: string;
-  type: 'delivery' | 'pickup' | 'transfer' | 'sorting' | 'inspection';
-  title: string;
-  description: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  assignedTo?: string;
-  assignedBy: string;
-  relatedEntityId?: string;
-  relatedEntityType?: 'shipment' | 'delivery' | 'manifest';
-  dueDate?: string;
-  completedAt?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Warehouse {
-  id: string;
-  code: string;
-  name: string;
-  type: 'hub' | 'branch' | 'sorting-center';
-  address: Address;
-  capacity: {
-    total: number;
-    current: number;
-    unit: 'cubic-meters' | 'pallets';
-  };
-  operatingHours: {
-    open: string;
-    close: string;
-    timezone: string;
-  };
-  contactPerson: Contact;
-  status: 'operational' | 'maintenance' | 'closed';
-  facilities: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Branch {
-  id: string;
-  code: string;
-  name: string;
-  address: Address;
-  warehouseId?: string;
-  managerId: string;
-  contactPhone: string;
-  contactEmail: string;
-  serviceArea: {
-    postalCodes: string[];
-    radius?: number;
-  };
-  status: 'active' | 'inactive';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: EmployeeRole;
-  branchId?: string;
-  permissions: string[];
-  preferences: {
-    language: 'en' | 'mm';
-    theme: 'light' | 'dark' | 'auto';
-    notifications: {
-      email: boolean;
-      push: boolean;
-      sms: boolean;
-    };
-  };
-  lastLogin?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface KPI {
-  label: string;
-  value: number | string;
-  unit?: string;
-  trend?: number;
-  trendDirection?: 'up' | 'down' | 'neutral';
-  icon?: string;
-}
-
-const STATUS_LABELS: Record<DeliveryStatus, string> = {
-  'pending': 'Pending',
-  'assigned': 'Assigned',
-  'picked-up': 'Picked Up',
-  'in-transit': 'In Transit',
-  'out-for-delivery': 'Out for Delivery',
-  'delivered': 'Delivered',
-  'failed': 'Failed',
-  'cancelled': 'Cancelled',
-  'returned': 'Returned',
-};
-
-const STATUS_COLORS: Record<DeliveryStatus, string> = {
-  'pending': 'bg-muted text-muted-foreground',
-  'assigned': 'bg-accent text-accent-foreground',
-  'picked-up': 'bg-accent text-accent-foreground',
-  'in-transit': 'bg-primary text-primary-foreground',
-  'out-for-delivery': 'bg-primary text-primary-foreground',
-  'delivered': 'bg-chart-3 text-white',
-  'failed': 'bg-destructive text-destructive-foreground',
-  'cancelled': 'bg-muted text-muted-foreground',
-  'returned': 'bg-chart-4 text-white',
-};
-
-export function formatStatus(status: DeliveryStatus): string {
-  return STATUS_LABELS[status] || status;
-}
-
-export function getStatusColor(status: DeliveryStatus): string {
-  return STATUS_COLORS[status] || 'bg-muted text-muted-foreground';
-}
-
-export function formatDate(date: string | Date, format: 'short' | 'long' | 'time' | 'datetime' = 'short'): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  
-  if (isNaN(d.getTime())) {
-    return 'Invalid Date';
-  }
-
-  const formatOptions: Record<string, Intl.DateTimeFormatOptions> = {
-    short: { year: 'numeric', month: 'short', day: 'numeric' },
-    long: { year: 'numeric', month: 'long', day: 'numeric' },
-    time: { hour: '2-digit', minute: '2-digit' },
-    datetime: { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
-  };
-
-  return new Intl.DateTimeFormat('en-US', formatOptions[format]).format(d);
-}
-
-export function formatCurrency(amount: number, currency: string = 'MMK'): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-export function formatWeight(weight: number, unit: 'kg' | 'lb' = 'kg'): string {
-  return `${weight.toFixed(2)} ${unit}`;
-}
-
-export function formatDistance(distance: number, unit: 'km' | 'mi' = 'km'): string {
-  return `${distance.toFixed(1)} ${unit}`;
-}
-
-export function formatDuration(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  
-  if (hours === 0) {
-    return `${mins}m`;
-  }
-  
-  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
-}
-
-export function calculateDeliveryMetrics(deliveries: Delivery[]): {
-  total: number;
-  delivered: number;
-  pending: number;
-  failed: number;
-  successRate: number;
-  onTimeRate: number;
-  averageDeliveryTime: number;
-} {
-  const total = deliveries.length;
-  const delivered = deliveries.filter(d => d.status === 'delivered').length;
-  const pending = deliveries.filter(d => ['pending', 'assigned', 'picked-up', 'in-transit', 'out-for-delivery'].includes(d.status)).length;
-  const failed = deliveries.filter(d => d.status === 'failed').length;
-  
-  const successRate = total > 0 ? (delivered / total) * 100 : 0;
-  
-  const deliveredWithTime = deliveries.filter(d => d.status === 'delivered' && d.deliveredAt && d.assignedAt);
-  const onTimeDeliveries = deliveredWithTime.filter(d => {
-    if (!d.deliveredAt || !d.assignedAt) return false;
-    const deliveryTime = new Date(d.deliveredAt).getTime();
-    const assignedTime = new Date(d.assignedAt).getTime();
-    const hoursDiff = (deliveryTime - assignedTime) / (1000 * 60 * 60);
-    return hoursDiff <= 24;
-  }).length;
-  
-  const onTimeRate = deliveredWithTime.length > 0 ? (onTimeDeliveries / deliveredWithTime.length) * 100 : 0;
-  
-  const totalDeliveryTime = deliveredWithTime.reduce((sum, d) => {
-    if (!d.deliveredAt || !d.assignedAt) return sum;
-    const deliveryTime = new Date(d.deliveredAt).getTime();
-    const assignedTime = new Date(d.assignedAt).getTime();
-    return sum + (deliveryTime - assignedTime);
-  }, 0);
-  
-  const averageDeliveryTime = deliveredWithTime.length > 0 
-    ? totalDeliveryTime / deliveredWithTime.length / (1000 * 60 * 60)
-    : 0;
-  
-  return {
-    total,
-    delivered,
-    pending,
-    failed,
-    successRate: Math.round(successRate * 10) / 10,
-    onTimeRate: Math.round(onTimeRate * 10) / 10,
-    averageDeliveryTime: Math.round(averageDeliveryTime * 10) / 10,
-  };
-}
-
-export function calculateRevenue(deliveries: Delivery[], shipments: Shipment[]): {
-  totalRevenue: number;
-  codCollected: number;
-  prepaidRevenue: number;
-  pendingCod: number;
-} {
-  const shipmentMap = new Map(shipments.map(s => [s.id, s]));
-  
-  let totalRevenue = 0;
-  let codCollected = 0;
-  let prepaidRevenue = 0;
-  let pendingCod = 0;
-  
-  deliveries.forEach(delivery => {
-    const shipment = shipmentMap.get(delivery.shipmentId);
-    if (!shipment) return;
-    
-    const serviceRates: Record<ServiceType, number> = {
-      'standard': 5000,
-      'express': 8000,
-      'same-day': 12000,
-      'next-day': 10000,
-      'economy': 3000,
-    };
-    
-    const baseRate = serviceRates[shipment.serviceType] || 5000;
-    const weightCharge = Math.max(0, shipment.packageDetails.weight - 1) * 1000;
-    const deliveryCharge = baseRate + weightCharge;
-    
-    totalRevenue += deliveryCharge;
-    
-    if (shipment.paymentMethod === 'cod') {
-      if (delivery.status === 'delivered' && delivery.codCollected !== undefined) {
-        codCollected += delivery.codCollected;
-      } else if (delivery.status !== 'delivered' && delivery.status !== 'failed' && delivery.status !== 'cancelled') {
-        pendingCod += (shipment.codAmount || 0);
-      }
-    } else if (shipment.paymentMethod === 'prepaid') {
-      prepaidRevenue += deliveryCharge;
-    }
-  });
-  
-  return {
-    totalRevenue: Math.round(totalRevenue),
-    codCollected: Math.round(codCollected),
-    prepaidRevenue: Math.round(prepaidRevenue),
-    pendingCod: Math.round(pendingCod),
-  };
-}
-
-export function groupByStatus<T extends { status: string }>(items: T[]): Record<string, T[]> {
-  return items.reduce((acc, item) => {
-    const status = item.status;
-    if (!acc[status]) {
-      acc[status] = [];
-    }
-    acc[status].push(item);
-    return acc;
-  }, {} as Record<string, T[]>);
-}
-
-export function sortByDate<T extends { createdAt: string }>(items: T[], order: 'asc' | 'desc' = 'desc'): T[] {
-  return [...items].sort((a, b) => {
-    const dateA = new Date(a.createdAt).getTime();
-    const dateB = new Date(b.createdAt).getTime();
-    return order === 'asc' ? dateA - dateB : dateB - dateA;
-  });
-}
-
-export function filterByDateRange<T extends { createdAt: string }>(items: T[], startDate: string, endDate: string): T[] {
-  const start = new Date(startDate).getTime();
-  const end = new Date(endDate).getTime();
-  
-  return items.filter(item => {
-    const itemDate = new Date(item.createdAt).getTime();
-    return itemDate >= start && itemDate <= end;
-  });
-}
-
-export function generateAWB(): string {
-  const prefix = 'BRX';
-  const timestamp = Date.now().toString().slice(-8);
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `${prefix}${timestamp}${random}`;
-}
-
-export function generateManifestNumber(): string {
-  const prefix = 'MNF';
-  const date = new Date();
-  const dateStr = `${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}`;
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `${prefix}-${dateStr}-${random}`;
-}
-
-export function validatePhone(phone: string): boolean {
-  const phoneRegex = /^\+?[0-9]{8,15}$/;
-  return phoneRegex.test(phone.replace(/[\s-]/g, ''));
-}
-
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-}
-
-export function validatePostalCode(postalCode: string, country: string = 'MM'): boolean {
-  const patterns: Record<string, RegExp> = {
-    'MM': /^[0-9]{5}$/,
-    'US': /^[0-9]{5}(-[0-9]{4})?$/,
-    'UK': /^[A-Z]{1,2}[0-9]{1,2}[A-Z]?\s?[0-9][A-Z]{2}$/i,
-  };
-  
-  const pattern = patterns[country] || /^[0-9A-Z\s-]{3,10}$/i;
-  return pattern.test(postalCode);
-}
-
-export function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-export function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
-  
-  return function executedFunction(...args: Parameters<T>) {
-    const later = () => {
-      timeout = null;
-      func(...args);
-    };
-    
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-    timeout = setTimeout(later, wait);
-  };
-}
-
-export function throttle<T extends (...args: any[]) => any>(func: T, limit: number): (...args: Parameters<T>) => void {
-  let inThrottle: boolean;
-  
-  return function executedFunction(...args: Parameters<T>) {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-}
-
-// Additional type definitions for production API
-export interface Vehicle {
-  id: string;
-  registration_number: string;
-  type: VehicleType;
-  capacity: any;
-  current_driver_id?: string;
-  warehouse_id?: string;
-  status: string;
-  last_maintenance_date?: string;
-  next_maintenance_date?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Complaint {
-  id: string;
-  ticket_number: string;
-  shipment_id?: string;
-  customer_id?: string;
-  category: string;
-  status: string;
-  priority: TaskPriority;
-  subject: string;
-  description: string;
-  assigned_to?: string;
-  resolution?: string;
-  resolved_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Attendance {
-  id: string;
-  employee_id: string;
-  date: string;
-  check_in?: string;
-  check_out?: string;
-  status: string;
-  location?: any;
-  notes?: string;
-  approved_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LeaveRequest {
-  id: string;
-  employee_id: string;
-  leave_type: string;
-  start_date: string;
-  end_date: string;
-  days_count: number;
-  reason: string;
-  status: string;
-  approved_by?: string;
-  approved_at?: string;
-  rejection_reason?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CODCollection {
-  id: string;
-  delivery_id: string;
-  shipment_id: string;
-  driver_id: string;
-  amount: number;
-  collected_at: string;
-  deposited_at?: string;
-  deposit_reference?: string;
-  status: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Invoice {
-  id: string;
-  invoice_number: string;
-  merchant_id: string;
-  billing_period_start: string;
-  billing_period_end: string;
-  subtotal: number;
-  tax: number;
-  discount: number;
-  total: number;
-  status: string;
-  due_date?: string;
-  paid_at?: string;
-  payment_reference?: string;
-  line_items: any;
-  notes?: string;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface QRCode {
-  id: string;
-  code: string;
-  type: string;
-  entity_id: string;
-  entity_type: string;
-  data?: any;
-  is_active: boolean;
-  scanned_count: number;
-  last_scanned_at?: string;
-  last_scanned_by?: string;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
+export const mockReports: Report[] = [
+  {
+    id: 'RPT001',
+    type: 'ways_count',
+    title: 'Ways Count Report - April 2026',
+    periodStart: '2026-04-01T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      totalWays: 156,
+      pending: 12,
+      pickedUp: 8,
+      inTransit: 23,
+      outForDelivery: 15,
+      delivered: 89,
+      failed: 6,
+      returned: 3,
+      cancelled: 0,
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT002',
+    type: 'active_ways',
+    title: 'Active Ways by Town - Current',
+    periodStart: '2026-04-08T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      towns: [
+        { name: 'Riverside', activeWays: 18, deliverymen: 2 },
+        { name: 'Hillside', activeWays: 15, deliverymen: 1 },
+        { name: 'Lakewood', activeWays: 9, deliverymen: 1 },
+        { name: 'Greenfield', activeWays: 12, deliverymen: 1 },
+      ],
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT003',
+    type: 'overdue_ways',
+    title: 'Overdue Ways Count - April 2026',
+    periodStart: '2026-04-01T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      totalOverdue: 8,
+      byTown: [
+        { name: 'Riverside', count: 3 },
+        { name: 'Hillside', count: 2 },
+        { name: 'Lakewood', count: 2 },
+        { name: 'Greenfield', count: 1 },
+      ],
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT004',
+    type: 'ways_by_deliveryman',
+    title: 'Ways by Deliverymen - April 2026',
+    periodStart: '2026-04-01T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      deliverymen: [
+        { name: 'John Smith', totalWays: 45, delivered: 38, failed: 2, active: 5 },
+        { name: 'Maria Garcia', totalWays: 52, delivered: 47, failed: 1, active: 4 },
+        { name: 'James Wilson', totalWays: 34, delivered: 29, failed: 2, active: 3 },
+        { name: 'Linda Davis', totalWays: 25, delivered: 23, failed: 1, active: 1 },
+      ],
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT005',
+    type: 'ways_by_merchant',
+    title: 'Ways by Merchants - April 2026',
+    periodStart: '2026-04-01T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      merchants: [
+        { name: 'TechMart Electronics', totalWays: 48, revenue: 720.00, avgDeliveryTime: 24 },
+        { name: 'Fashion Hub Boutique', totalWays: 36, revenue: 432.00, avgDeliveryTime: 18 },
+        { name: 'HomeGoods Plus', totalWays: 28, revenue: 336.00, avgDeliveryTime: 22 },
+        { name: 'BookWorld Online', totalWays: 32, revenue: 384.00, avgDeliveryTime: 20 },
+      ],
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT006',
+    type: 'ways_by_town',
+    title: 'Total Ways by Town - April 2026',
+    periodStart: '2026-04-01T00:00:00Z',
+    periodEnd: '2026-04-08T23:59:59Z',
+    data: {
+      towns: [
+        { name: 'Riverside', totalWays: 52, delivered: 45, failed: 3, pending: 4 },
+        { name: 'Hillside', totalWays: 41, delivered: 36, failed: 2, pending: 3 },
+        { name: 'Lakewood', totalWays: 35, delivered: 30, failed: 2, pending: 3 },
+        { name: 'Greenfield', totalWays: 28, delivered: 24, failed: 1, pending: 3 },
+      ],
+    },
+    generatedAt: '2026-04-08T16:00:00Z',
+  },
+  {
+    id: 'RPT007',
+    type: 'merchant_compare',
+    title: 'Merchants Order Compare - Q1 2026',
+    periodStart: '2026-01-01T00:00:00Z',
+    periodEnd: '2026-03-31T23:59:59Z',
+    data: {
+      merchants: [
+        {
+          name: 'TechMart Electronics',
+          q1Orders: 312,
+          q1Revenue: 4680.00,
+          previousQ1Orders: 289,
+          growth: 7.96,
+        },
+        {
+          name: 'Fashion Hub Boutique',
+          q1Orders: 245,
+          q1Revenue: 2940.00,
+          previousQ1Orders: 221,
+          growth: 10.86,
+        },
+        {
+          name: 'HomeGoods Plus',
+          q1Orders: 178,
+          q1Revenue: 2136.00,
+          previousQ1Orders: 165,
+          growth: 7.88,
+        },
+        {
+          name: 'BookWorld Online',
+          q1Orders: 198,
+          q1Revenue: 2376.00,
+          previousQ1Orders: 187,
+          growth: 5.88,
+        },
+      ],
+    },
+    generatedAt: '2026-04-01T00:00:00Z',
+  },
+];
