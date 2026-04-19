@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Navigation, Warehouse, Truck, Package, AlertCircle } from 'lucide-react';
 import { Delivery, Employee, Warehouse as WarehouseType } from '@/lib/index';
-import { mockShipments } from '@/data/index';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,11 @@ interface MapViewProps {
   deliveries?: Delivery[];
   drivers?: Employee[];
   warehouses?: WarehouseType[];
+}
+
+interface Coordinates {
+  lat: number;
+  lng: number;
 }
 
 interface MapMarker {
@@ -24,61 +28,135 @@ interface MapMarker {
   data?: any;
 }
 
-export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapViewProps) {
+function isValidCoordinates(value: unknown): value is Coordinates {
+  if (!value || typeof value !== 'object') return false;
+  const coords = value as Record<string, unknown>;
+  return typeof coords.lat === 'number' && typeof coords.lng === 'number';
+}
+
+function getDeliveryCoordinates(delivery: Delivery): Coordinates | null {
+  const d = delivery as any;
+
+  if (isValidCoordinates(d?.location)) return d.location;
+  if (isValidCoordinates(d?.coordinates)) return d.coordinates;
+  if (isValidCoordinates(d?.recipient?.address?.coordinates)) {
+    return d.recipient.address.coordinates;
+  }
+
+  return null;
+}
+
+function getDriverCoordinates(driver: Employee): Coordinates | null {
+  const d = driver as any;
+
+  if (isValidCoordinates(d?.currentLocation)) return d.currentLocation;
+  if (isValidCoordinates(d?.location)) return d.location;
+  if (isValidCoordinates(d?.coordinates)) return d.coordinates;
+
+  return null;
+}
+
+function getWarehouseCoordinates(warehouse: WarehouseType): Coordinates | null {
+  const w = warehouse as any;
+
+  if (isValidCoordinates(w?.address?.coordinates)) return w.address.coordinates;
+  if (isValidCoordinates(w?.location?.coordinates)) return w.location.coordinates;
+  if (isValidCoordinates(w?.coordinates)) return w.coordinates;
+
+  return null;
+}
+
+function getDeliveryLabel(delivery: Delivery): string {
+  const d = delivery as any;
+  return d?.wayNumber || d?.awb || d?.id || 'Delivery';
+}
+
+function getWarehouseLabel(warehouse: WarehouseType): string {
+  const w = warehouse as any;
+  return w?.name || w?.warehouseName || w?.id || 'Warehouse';
+}
+
+function getDriverLabel(driver: Employee): string {
+  const d = driver as any;
+  return d?.name || d?.fullName || d?.id || 'Driver';
+}
+
+export function MapView({
+  deliveries = [],
+  drivers = [],
+  warehouses = [],
+}: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 16.8661, lng: 96.1951 });
   const [zoom, setZoom] = useState(12);
 
-  const markers: MapMarker[] = [
-    ...deliveries.map(delivery => {
-      const shipment = mockShipments.find(s => s.id === delivery.shipmentId);
-      if (!shipment?.recipient.address.coordinates) return null;
-      return {
-        id: delivery.id,
-        type: 'delivery' as const,
-        lat: shipment.recipient.address.coordinates.lat,
-        lng: shipment.recipient.address.coordinates.lng,
-        label: shipment.awb,
-        status: delivery.status,
-        data: { delivery, shipment },
-      };
-    }).filter(Boolean) as MapMarker[],
-    ...drivers.map(driver => {
-      if (!driver.currentLocation) return null;
-      return {
-        id: driver.id,
-        type: 'driver' as const,
-        lat: driver.currentLocation.lat,
-        lng: driver.currentLocation.lng,
-        label: driver.name,
-        status: driver.status,
-        data: driver,
-      };
-    }).filter(Boolean) as MapMarker[],
-    ...warehouses.map(warehouse => {
-      if (!warehouse.address.coordinates) return null;
-      return {
-        id: warehouse.id,
-        type: 'warehouse' as const,
-        lat: warehouse.address.coordinates.lat,
-        lng: warehouse.address.coordinates.lng,
-        label: warehouse.name,
-        status: warehouse.status,
-        data: warehouse,
-      };
-    }).filter(Boolean) as MapMarker[],
-  ];
+  const markers: MapMarker[] = useMemo(() => {
+    const deliveryMarkers = deliveries
+      .map((delivery) => {
+        const coords = getDeliveryCoordinates(delivery);
+        if (!coords) return null;
+
+        return {
+          id: delivery.id,
+          type: 'delivery' as const,
+          lat: coords.lat,
+          lng: coords.lng,
+          label: getDeliveryLabel(delivery),
+          status: (delivery as any).status,
+          data: { delivery },
+        };
+      })
+      .filter(Boolean) as MapMarker[];
+
+    const driverMarkers = drivers
+      .map((driver) => {
+        const coords = getDriverCoordinates(driver);
+        if (!coords) return null;
+
+        return {
+          id: (driver as any).id,
+          type: 'driver' as const,
+          lat: coords.lat,
+          lng: coords.lng,
+          label: getDriverLabel(driver),
+          status: (driver as any).status,
+          data: driver,
+        };
+      })
+      .filter(Boolean) as MapMarker[];
+
+    const warehouseMarkers = warehouses
+      .map((warehouse) => {
+        const coords = getWarehouseCoordinates(warehouse);
+        if (!coords) return null;
+
+        return {
+          id: (warehouse as any).id,
+          type: 'warehouse' as const,
+          lat: coords.lat,
+          lng: coords.lng,
+          label: getWarehouseLabel(warehouse),
+          status: (warehouse as any).status,
+          data: warehouse,
+        };
+      })
+      .filter(Boolean) as MapMarker[];
+
+    return [...deliveryMarkers, ...driverMarkers, ...warehouseMarkers];
+  }, [deliveries, drivers, warehouses]);
 
   const getMarkerColor = (marker: MapMarker): string => {
     if (marker.type === 'warehouse') return 'bg-accent';
     if (marker.type === 'driver') return 'bg-primary';
-    
+
     switch (marker.status) {
       case 'delivered':
         return 'bg-chart-3';
       case 'in-transit':
       case 'out-for-delivery':
+      case 'out_for_delivery':
+      case 'in_transit':
         return 'bg-primary';
       case 'failed':
         return 'bg-destructive';
@@ -101,20 +179,23 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
   const calculateMapPosition = (lat: number, lng: number) => {
     const latOffset = (lat - mapCenter.lat) * 100 * zoom;
     const lngOffset = (lng - mapCenter.lng) * 100 * zoom;
+
     return {
       top: `${50 - latOffset}%`,
       left: `${50 + lngOffset}%`,
     };
   };
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 2, 20));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 2, 8));
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 2, 20));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 2, 8));
+
   const handleRecenter = () => {
-    if (markers.length > 0) {
-      const avgLat = markers.reduce((sum, m) => sum + m.lat, 0) / markers.length;
-      const avgLng = markers.reduce((sum, m) => sum + m.lng, 0) / markers.length;
-      setMapCenter({ lat: avgLat, lng: avgLng });
-    }
+    if (markers.length === 0) return;
+
+    const avgLat = markers.reduce((sum, marker) => sum + marker.lat, 0) / markers.length;
+    const avgLng = markers.reduce((sum, marker) => sum + marker.lng, 0) / markers.length;
+
+    setMapCenter({ lat: avgLat, lng: avgLng });
   };
 
   useEffect(() => {
@@ -138,6 +219,7 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
       >
         {markers.map((marker) => {
           const position = calculateMapPosition(marker.lat, marker.lng);
+
           return (
             <motion.div
               key={marker.id}
@@ -160,6 +242,7 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
               >
                 {getMarkerIcon(marker)}
               </div>
+
               {marker.type === 'driver' && (
                 <motion.div
                   className="absolute -top-1 -right-1 w-3 h-3 bg-chart-3 rounded-full border-2 border-background"
@@ -173,28 +256,13 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
       </div>
 
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleZoomIn}
-          className="shadow-lg"
-        >
+        <Button size="icon" variant="secondary" onClick={handleZoomIn} className="shadow-lg">
           +
         </Button>
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleZoomOut}
-          className="shadow-lg"
-        >
+        <Button size="icon" variant="secondary" onClick={handleZoomOut} className="shadow-lg">
           -
         </Button>
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleRecenter}
-          className="shadow-lg"
-        >
+        <Button size="icon" variant="secondary" onClick={handleRecenter} className="shadow-lg">
           <Navigation className="w-4 h-4" />
         </Button>
       </div>
@@ -203,15 +271,21 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
         <Card className="p-3 shadow-lg">
           <div className="flex items-center gap-2 text-sm">
             <div className="w-3 h-3 rounded-full bg-primary" />
-            <span className="text-muted-foreground">Active Drivers ({drivers.filter(d => d.status === 'active').length})</span>
+            <span className="text-muted-foreground">
+              Active Drivers ({drivers.filter((d: any) => d?.status === 'active').length})
+            </span>
           </div>
         </Card>
+
         <Card className="p-3 shadow-lg">
           <div className="flex items-center gap-2 text-sm">
             <div className="w-3 h-3 rounded-full bg-chart-3" />
-            <span className="text-muted-foreground">Delivered ({deliveries.filter(d => d.status === 'delivered').length})</span>
+            <span className="text-muted-foreground">
+              Delivered ({deliveries.filter((d: any) => d?.status === 'delivered').length})
+            </span>
           </div>
         </Card>
+
         <Card className="p-3 shadow-lg">
           <div className="flex items-center gap-2 text-sm">
             <div className="w-3 h-3 rounded-full bg-accent" />
@@ -239,41 +313,48 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
                   <p className="text-sm text-muted-foreground capitalize">{selectedMarker.type}</p>
                 </div>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setSelectedMarker(null)}
-              >
+
+              <Button size="icon" variant="ghost" onClick={() => setSelectedMarker(null)}>
                 ×
               </Button>
             </div>
 
-            {selectedMarker.type === 'delivery' && selectedMarker.data && (
+            {selectedMarker.type === 'delivery' && selectedMarker.data?.delivery && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Status</span>
                   <Badge variant="secondary" className="capitalize">
-                    {selectedMarker.data.delivery.status.replace('-', ' ')}
+                    {String(selectedMarker.data.delivery.status || 'unknown').replace(/[_-]/g, ' ')}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Recipient</span>
-                  <span className="text-sm font-medium">{selectedMarker.data.shipment.recipient.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Address</span>
-                  <span className="text-sm font-medium text-right max-w-[200px] truncate">
-                    {selectedMarker.data.shipment.recipient.address.street}
-                  </span>
-                </div>
-                {selectedMarker.data.shipment.codAmount && (
+
+                {'recipientName' in selectedMarker.data.delivery && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">COD Amount</span>
+                    <span className="text-sm text-muted-foreground">Recipient</span>
                     <span className="text-sm font-medium">
-                      MMK {selectedMarker.data.shipment.codAmount.toLocaleString()}
+                      {selectedMarker.data.delivery.recipientName}
                     </span>
                   </div>
                 )}
+
+                {'recipientAddress' in selectedMarker.data.delivery && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Address</span>
+                    <span className="text-sm font-medium text-right max-w-[200px] truncate">
+                      {selectedMarker.data.delivery.recipientAddress}
+                    </span>
+                  </div>
+                )}
+
+                {'codAmount' in selectedMarker.data.delivery &&
+                  selectedMarker.data.delivery.codAmount != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">COD Amount</span>
+                      <span className="text-sm font-medium">
+                        MMK {Number(selectedMarker.data.delivery.codAmount).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
               </div>
             )}
 
@@ -282,16 +363,20 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Status</span>
                   <Badge variant="secondary" className="capitalize">
-                    {selectedMarker.data.status}
+                    {String(selectedMarker.data.status || 'unknown')}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Vehicle</span>
-                  <span className="text-sm font-medium">
-                    {selectedMarker.data.vehicleAssignment?.licensePlate || 'N/A'}
-                  </span>
-                </div>
-                {selectedMarker.data.performance && (
+
+                {'vehicleAssignment' in selectedMarker.data && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Vehicle</span>
+                    <span className="text-sm font-medium">
+                      {selectedMarker.data.vehicleAssignment?.licensePlate || 'N/A'}
+                    </span>
+                  </div>
+                )}
+
+                {'performance' in selectedMarker.data && selectedMarker.data.performance && (
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Success Rate</span>
@@ -299,6 +384,7 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
                         {selectedMarker.data.performance.successRate}%
                       </span>
                     </div>
+
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Total Deliveries</span>
                       <span className="text-sm font-medium">
@@ -312,31 +398,47 @@ export function MapView({ deliveries = [], drivers = [], warehouses = [] }: MapV
 
             {selectedMarker.type === 'warehouse' && selectedMarker.data && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Type</span>
-                  <Badge variant="secondary" className="capitalize">
-                    {selectedMarker.data.type.replace('-', ' ')}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Capacity</span>
-                  <span className="text-sm font-medium">
-                    {selectedMarker.data.capacity.current} / {selectedMarker.data.capacity.total} {selectedMarker.data.capacity.unit}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Status</span>
-                  <Badge
-                    variant={selectedMarker.data.status === 'operational' ? 'default' : 'secondary'}
-                    className="capitalize"
-                  >
-                    {selectedMarker.data.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Contact</span>
-                  <span className="text-sm font-medium">{selectedMarker.data.contactPerson.phone}</span>
-                </div>
+                {'type' in selectedMarker.data && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Type</span>
+                    <Badge variant="secondary" className="capitalize">
+                      {String(selectedMarker.data.type).replace(/[_-]/g, ' ')}
+                    </Badge>
+                  </div>
+                )}
+
+                {'capacity' in selectedMarker.data && selectedMarker.data.capacity && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Capacity</span>
+                    <span className="text-sm font-medium">
+                      {selectedMarker.data.capacity.current} / {selectedMarker.data.capacity.total}{' '}
+                      {selectedMarker.data.capacity.unit}
+                    </span>
+                  </div>
+                )}
+
+                {'status' in selectedMarker.data && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge
+                      variant={
+                        selectedMarker.data.status === 'operational' ? 'default' : 'secondary'
+                      }
+                      className="capitalize"
+                    >
+                      {selectedMarker.data.status}
+                    </Badge>
+                  </div>
+                )}
+
+                {'contactPerson' in selectedMarker.data && selectedMarker.data.contactPerson && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Contact</span>
+                    <span className="text-sm font-medium">
+                      {selectedMarker.data.contactPerson.phone}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
