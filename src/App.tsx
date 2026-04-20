@@ -20,6 +20,7 @@ import SupervisorPortal from "./pages/SupervisorPortal";
 import DataEntryPortal from "./pages/DataEntryPortal";
 import CustomerServicePortal from "./pages/CustomerServicePortal";
 import CustomerPortal from "./pages/CustomerPortal";
+import Login from "./pages/Login";
 
 const queryClient = new QueryClient();
 
