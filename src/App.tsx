@@ -24,10 +24,11 @@ import CustomerPortal from "./pages/CustomerPortal";
 import Login from "./pages/Login";
 import AdminHrPortal from "./pages/AdminOperations";
 
-// Added pages that exist in repo but were not mounted
+// Extra mounted pages
 import ProfileDashboard from "./pages/ProfileDashboard";
 import WalletHub from "./pages/WalletHub";
 import BranchOfficePage from "./pages/BranchOffice";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -78,7 +79,7 @@ function AppShell() {
                 <Route path="create-delivery" element={<CreateDelivery />} />
                 <Route path="way-management" element={<WayManagement />} />
 
-                {/* Newly mounted framed pages */}
+                {/* Extra pages */}
                 <Route path="profile/*" element={<ProfileDashboard />} />
                 <Route path="wallet/*" element={<WalletHub />} />
                 <Route path="branch-office/*" element={<BranchOfficePage />} />
@@ -107,7 +108,6 @@ function AppShell() {
                 <Route path="admin/operations" element={<Navigate to="/admin-hr/admin" replace />} />
                 <Route path="admin/operations/*" element={<Navigate to="/admin-hr/admin" replace />} />
 
-                {/* Optional old labels if production still uses them */}
                 <Route path="receipts" element={<Navigate to="/waybill" replace />} />
                 <Route path="receipts/*" element={<Navigate to="/waybill" replace />} />
 
@@ -138,6 +138,11 @@ export default function App() {
               }
             />
             <Route path="/Login" element={<Navigate to="/login" replace />} />
+
+            {/* Must stay public and NOT use PublicOnlyRoute */}
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/reset-password/" element={<Navigate to="/reset-password" replace />} />
+
             <Route
               path="/*"
               element={
