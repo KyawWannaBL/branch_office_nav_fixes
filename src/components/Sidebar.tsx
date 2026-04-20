@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { ComponentType } from "react";
 import {
   LayoutDashboard,
@@ -19,8 +19,14 @@ import {
   ClipboardCheck,
   BadgeCheck,
   Building,
+  Warehouse,
+  Archive,
+  Layers3,
+  QrCode,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase/client";
 
 type NavItem = {
   title: string;
@@ -30,7 +36,7 @@ type NavItem = {
 };
 
 const coreNav: NavItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, aliases: ["/"] },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Profile", url: "/profile", icon: UserCircle2 },
   { title: "Wallet Hub", url: "/wallet", icon: Wallet },
   { title: "Create Delivery", url: "/create-delivery", icon: Package },
@@ -44,6 +50,12 @@ const portalNav: NavItem[] = [
   { title: "Customer Portal", url: "/customer", icon: Users },
   { title: "Merchant Portal", url: "/merchant", icon: Building2, aliases: ["/merchants"] },
   { title: "Branch Office", url: "/branch-office", icon: Building },
+  { title: "Warehouse Portal", url: "/warehouse", icon: Warehouse },
+  { title: "WH Inbound", url: "/warehouse/inbound", icon: Package },
+  { title: "WH Staging", url: "/warehouse/staging", icon: Layers3 },
+  { title: "WH Storage", url: "/warehouse/storage", icon: Archive },
+  { title: "WH Outbound", url: "/warehouse/outbound", icon: Truck },
+  { title: "WH QR Scanner", url: "/warehouse/qr", icon: QrCode },
   { title: "Admin & HR Portal", url: "/admin-hr", icon: Users, aliases: ["/admin/hr-admin"] },
   { title: "HR Employees", url: "/admin-hr/employees", icon: Briefcase },
   { title: "HR Approvals", url: "/admin-hr/approvals", icon: ClipboardCheck },
@@ -60,10 +72,7 @@ const systemNav: NavItem[] = [
 
 function isItemActive(pathname: string, item: NavItem) {
   const candidates = [item.url, ...(item.aliases || [])];
-  return candidates.some((candidate) => {
-    if (candidate === "/dashboard") return pathname === "/dashboard";
-    return pathname === candidate || pathname.startsWith(`${candidate}/`);
-  });
+  return candidates.some((candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`));
 }
 
 function SidebarSection({
@@ -91,9 +100,7 @@ function SidebarSection({
               to={item.url}
               className={[
                 "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                active
-                  ? "bg-cyan-500/15 text-cyan-200"
-                  : "text-slate-100 hover:bg-white/10",
+                active ? "bg-cyan-500/15 text-cyan-200" : "text-slate-100 hover:bg-white/10",
               ].join(" ")}
             >
               <item.icon className="h-4 w-4 shrink-0" />
@@ -128,13 +135,19 @@ function getRoleLabel(user: any) {
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const displayName = getDisplayName(user);
   const roleLabel = getRoleLabel(user);
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    navigate("/login", { replace: true });
+  }
+
   return (
-    <aside className="flex h-screen w-[264px] shrink-0 flex-col border-r border-white/10 bg-[linear-gradient(180deg,#061120_0%,#0A1830_100%)] text-white shadow-2xl">
+    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-white/10 bg-[linear-gradient(180deg,#061120_0%,#0A1830_100%)] text-white shadow-2xl">
       <div className="border-b border-white/10 p-3">
         <div className="rounded-2xl border border-cyan-500/15 bg-[linear-gradient(180deg,#081526_0%,#0b1e37_100%)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
           <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-300">
@@ -152,7 +165,7 @@ export default function Sidebar() {
         <SidebarSection title="System" items={systemNav} pathname={location.pathname} />
       </div>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="border-t border-white/10 p-3 space-y-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
           Signed in as
           <div className="mt-1 truncate font-bold text-white">{displayName}</div>
@@ -161,6 +174,15 @@ export default function Sidebar() {
             Role: {String(roleLabel).toUpperCase()}
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void handleSignOut()}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </button>
       </div>
     </aside>
   );

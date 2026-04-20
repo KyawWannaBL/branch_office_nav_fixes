@@ -1,25 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, LockKeyhole, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
-type NoticeTone = "info" | "error" | "success";
+function readRecoveryTokens() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const search = new URLSearchParams(window.location.search);
 
-function Notice({
-  tone,
-  message,
-}: {
-  tone: NoticeTone;
-  message: string;
-}) {
-  const cls =
-    tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : tone === "error"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
-        : "border-sky-200 bg-sky-50 text-sky-700";
-
-  return <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${cls}`}>{message}</div>;
+  return {
+    accessToken: hash.get("access_token") || search.get("access_token"),
+    refreshToken: hash.get("refresh_token") || search.get("refresh_token"),
+    type: hash.get("type") || search.get("type"),
+  };
 }
 
 export default function ResetPassword() {
@@ -27,241 +19,182 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [initializing, setInitializing] = useState(true);
+  const [booting, setBooting] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [notice, setNotice] = useState<{ tone: NoticeTone; message: string } | null>(null);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const recoveryHint = useMemo(() => {
-    const hash = window.location.hash || "";
-    const search = window.location.search || "";
-    return hash.includes("type=recovery") || hash.includes("access_token=") || search.includes("code=");
-  }, []);
+  const passwordMismatch = useMemo(() => {
+    return confirmPassword.length > 0 && password !== confirmPassword;
+  }, [password, confirmPassword]);
 
   useEffect(() => {
     let active = true;
 
-    const bootstrap = async () => {
+    async function initRecovery() {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get("code");
+        const { accessToken, refreshToken, type } = readRecoveryTokens();
 
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-
-          const cleanUrl = new URL(window.location.href);
-          cleanUrl.searchParams.delete("code");
-          window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+        if (type !== "recovery" || !accessToken || !refreshToken) {
+          throw new Error("Invalid or expired password reset link.");
         }
 
-        for (let i = 0; i < 6; i += 1) {
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
-
-          if (error) throw error;
-
-          if (session) {
-            if (!active) return;
-            setSessionReady(true);
-            setNotice({
-              tone: "info",
-              message: "Recovery session verified. Enter your new password below.",
-            });
-            setInitializing(false);
-            return;
-          }
-
-          await new Promise((resolve) => window.setTimeout(resolve, 350));
-        }
-
-        if (!active) return;
-
-        setSessionReady(false);
-        setNotice({
-          tone: "error",
-          message: recoveryHint
-            ? "Recovery session could not be established. Please reopen the latest reset link from your email."
-            : "Auth session missing. Open this page only from the Supabase reset email link.",
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
-        setInitializing(false);
-      } catch (error) {
-        if (!active) return;
 
-        const message = error instanceof Error ? error.message : "Unable to verify recovery session.";
-        setSessionReady(false);
-        setNotice({
-          tone: "error",
-          message,
-        });
-        setInitializing(false);
-      }
-    };
+        if (error) throw error;
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        setSessionReady(Boolean(session));
-        setInitializing(false);
-
-        if (session) {
-          setNotice({
-            tone: "info",
-            message: "Recovery session verified. Enter your new password below.",
-          });
+        if (active) setReady(true);
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Unable to verify reset link.");
+          setReady(false);
         }
+      } finally {
+        if (active) setBooting(false);
       }
-    });
+    }
 
-    void bootstrap();
+    void initRecovery();
 
     return () => {
       active = false;
-      subscription.unsubscribe();
     };
-  }, [recoveryHint]);
+  }, []);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
+    setSuccess("");
 
-    if (!sessionReady) {
-      setNotice({
-        tone: "error",
-        message: "Recovery session is missing. Please open the reset link from your email again.",
-      });
+    if (!password.trim()) {
+      setError("New password is required.");
       return;
     }
 
     if (password.length < 8) {
-      setNotice({
-        tone: "error",
-        message: "Password must be at least 8 characters long.",
-      });
+      setError("Password must be at least 8 characters.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setNotice({
-        tone: "error",
-        message: "Passwords do not match.",
-      });
+      setError("Passwords do not match.");
       return;
     }
 
-    try {
-      setSubmitting(true);
+    setSubmitting(true);
 
-      const { error } = await supabase.auth.updateUser({ password });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password,
+      });
+
       if (error) throw error;
 
-      setNotice({
-        tone: "success",
-        message: "Password updated successfully. Redirecting to login...",
-      });
+      setSuccess("Password updated successfully. Please sign in again.");
 
       await supabase.auth.signOut();
 
       window.setTimeout(() => {
         navigate("/login", { replace: true });
       }, 1200);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to update password.";
-      setNotice({
-        tone: "error",
-        message,
-      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update password.");
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#08213a_0%,#020817_55%,#01040c_100%)] px-4 py-10 text-white">
-      <div className="mx-auto flex min-h-[85vh] max-w-xl items-center justify-center">
-        <div className="w-full rounded-[32px] border border-white/10 bg-black/55 p-8 shadow-2xl backdrop-blur-xl">
-          <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/20">
-              <ShieldCheck className="h-8 w-8" />
-            </div>
-            <h1 className="mt-5 text-4xl font-black tracking-tight text-white">BRITIUM L5</h1>
-            <p className="mt-2 text-sm font-semibold uppercase tracking-[0.28em] text-slate-300">
-              Secure Reset
-            </p>
+    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_54%,#f8fafc_100%)] px-4">
+      <div className="w-full max-w-md rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-3xl font-black text-[#0d2c54]">Reset Password</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Set a new password for your Britium Express account.
+        </p>
+
+        {booting ? (
+          <div className="mt-8 inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Verifying reset link...
           </div>
-
-          {notice ? <div className="mt-8"><Notice tone={notice.tone} message={notice.message} /></div> : null}
-
-          <form className="mt-8 space-y-5" onSubmit={onSubmit}>
+        ) : !ready ? (
+          <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error || "This reset link is invalid or expired."}
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>
-              <label htmlFor="new-password" className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-slate-300">
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                 New Password
               </label>
               <div className="relative">
-                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="new-password"
-                  name="new-password"
                   type="password"
-                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
                   placeholder="Enter new password"
-                  disabled={initializing || submitting}
-                  className="h-14 w-full rounded-2xl border border-cyan-400/20 bg-[#021025] pl-12 pr-4 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:ring-4 focus:ring-cyan-400/10 disabled:opacity-70"
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-slate-300">
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                 Confirm Password
               </label>
               <div className="relative">
-                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="confirm-password"
-                  name="confirm-password"
                   type="password"
-                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter new password"
-                  disabled={initializing || submitting}
-                  className="h-14 w-full rounded-2xl border border-cyan-400/20 bg-[#021025] pl-12 pr-4 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:ring-4 focus:ring-cyan-400/10 disabled:opacity-70"
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
+                  placeholder="Confirm new password"
                 />
               </div>
             </div>
 
+            {passwordMismatch ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Passwords do not match.
+              </div>
+            ) : null}
+
+            {error ? (
+              <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <AlertCircle className="mt-0.5 h-4 w-4" />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            {success ? (
+              <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <CheckCircle2 className="mt-0.5 h-4 w-4" />
+                <span>{success}</span>
+              </div>
+            ) : null}
+
             <button
               type="submit"
-              disabled={initializing || submitting || !sessionReady}
-              className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-lg font-black text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting || passwordMismatch}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#0d2c54] px-4 text-sm font-black uppercase tracking-[0.16em] text-white disabled:opacity-70"
             >
-              {initializing || submitting ? (
+              {submitting ? (
                 <>
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                  {initializing ? "Verifying Session" : "Confirming Change"}
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Updating
                 </>
               ) : (
-                "Confirm Change"
+                "Update Password"
               )}
             </button>
           </form>
-
-          <button
-            type="button"
-            onClick={() => navigate("/login")}
-            className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-slate-300 transition hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Login
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -29,6 +29,7 @@ import ProfileDashboard from "./pages/ProfileDashboard";
 import WalletHub from "./pages/WalletHub";
 import BranchOfficePage from "./pages/BranchOffice";
 import ResetPassword from "./pages/ResetPassword";
+import WarehouseOperations from "./pages/WarehouseOperations";
 
 const queryClient = new QueryClient();
 
@@ -49,15 +50,6 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
-function PublicOnlyRoute({ children }: { children: JSX.Element }) {
-  const { user, loading } = useAuth();
-
-  if (loading) return <FullScreenLoading />;
-  if (user) return <Navigate to="/dashboard" replace />;
-
-  return children;
-}
-
 function AppShell() {
   return (
     <SidebarProvider defaultOpen={true}>
@@ -73,16 +65,18 @@ function AppShell() {
               }
             >
               <Routes>
-                {/* Core */}
                 <Route index element={<Navigate to="/dashboard" replace />} />
+
+                {/* Core */}
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="create-delivery" element={<CreateDelivery />} />
                 <Route path="way-management" element={<WayManagement />} />
 
-                {/* Extra pages */}
+                {/* Extended */}
                 <Route path="profile/*" element={<ProfileDashboard />} />
                 <Route path="wallet/*" element={<WalletHub />} />
                 <Route path="branch-office/*" element={<BranchOfficePage />} />
+                <Route path="warehouse/*" element={<WarehouseOperations />} />
 
                 {/* Portal groups */}
                 <Route path="supervisor/*" element={<SupervisorPortal />} />
@@ -129,24 +123,14 @@ export default function App() {
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public routes */}
-            <Route
-              path="/"
-              element={<Navigate to="/login" replace />}
-            />
-            <Route
-              path="/login"
-              element={
-                <PublicOnlyRoute>
-                  <Login />
-                </PublicOnlyRoute>
-              }
-            />
+            {/* Public */}
+            <Route path="/" element={<Login />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/Login" element={<Navigate to="/login" replace />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password/" element={<Navigate to="/reset-password" replace />} />
 
-            {/* Protected app */}
+            {/* Protected */}
             <Route
               path="/*"
               element={
