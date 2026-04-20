@@ -12,38 +12,63 @@ import {
   Building2,
   Briefcase,
   Users,
+  Truck,
   FileText,
   BarChart3,
   Settings,
-  Truck,
 } from "lucide-react";
 
 type NavItem = {
   title: string;
   url: string;
   icon: ComponentType<{ className?: string }>;
+  aliases?: string[];
 };
 
 const coreNav: NavItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, aliases: ["/dashboard"] },
   { title: "Profile", url: "/profile", icon: UserCircle2 },
   { title: "Wallet Hub", url: "/wallet", icon: Wallet },
   { title: "Create Delivery", url: "/create-delivery", icon: Package },
   { title: "Way Management", url: "/way-management", icon: Map },
 ];
 
-const managementNav: NavItem[] = [
+const portalNav: NavItem[] = [
   { title: "Supervisor Control", url: "/supervisor", icon: ShieldCheck },
   { title: "Data Entry Portal", url: "/data-entry", icon: Database },
   { title: "Customer Service", url: "/customer-service", icon: Headset },
   { title: "Branch Office", url: "/branch-office", icon: Building2 },
-  { title: "Admin (Operations)", url: "/admin/operations", icon: Briefcase },
-  { title: "Admin (HR & Admin)", url: "/admin/hr-admin", icon: Users },
+  {
+    title: "Admin (Operations)",
+    url: "/admin-hr/admin",
+    icon: Briefcase,
+    aliases: ["/admin/operations"],
+  },
+  {
+    title: "Admin (HR & Admin)",
+    url: "/admin-hr",
+    icon: Users,
+    aliases: ["/admin/hr-admin"],
+  },
+  { title: "Customer Portal", url: "/customer", icon: Users },
+  { title: "Merchant Portal", url: "/merchant", icon: Building2, aliases: ["/merchants"] },
   { title: "Deliverymen", url: "/deliverymen", icon: Truck },
-  { title: "Receipts", url: "/receipts", icon: FileText },
+];
+
+const systemNav: NavItem[] = [
+  { title: "Receipts", url: "/waybill", icon: FileText, aliases: ["/receipts"] },
   { title: "Reporting", url: "/reporting", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
+
+function isItemActive(pathname: string, item: NavItem) {
+  const candidates = [item.url, ...(item.aliases || [])];
+
+  return candidates.some((candidate) => {
+    if (candidate === "/") return pathname === "/" || pathname === "/dashboard";
+    return pathname === candidate || pathname.startsWith(`${candidate}/`);
+  });
+}
 
 function SidebarSection({
   title,
@@ -59,10 +84,10 @@ function SidebarSection({
       <div className="px-6 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
         {title}
       </div>
+
       <div className="mt-3 space-y-1 px-3">
         {items.map((item) => {
-          const active =
-            pathname === item.url || pathname.startsWith(`${item.url}/`);
+          const active = isItemActive(pathname, item);
 
           return (
             <Link
@@ -103,7 +128,8 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto py-4">
         <SidebarSection title="Core" items={coreNav} pathname={location.pathname} />
-        <SidebarSection title="Management" items={managementNav} pathname={location.pathname} />
+        <SidebarSection title="Portals" items={portalNav} pathname={location.pathname} />
+        <SidebarSection title="System" items={systemNav} pathname={location.pathname} />
       </div>
 
       <div className="border-t border-white/10 p-3">

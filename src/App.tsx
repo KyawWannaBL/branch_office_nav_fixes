@@ -8,7 +8,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import Sidebar from "./components/Sidebar";
 
-// Page Imports
+// Core pages
 import Dashboard from "./pages/Dashboard";
 import CreateDelivery from "./pages/CreateDelivery";
 import WayManagement from "./pages/WayManagement";
@@ -22,6 +22,12 @@ import DataEntryPortal from "./pages/DataEntryPortal";
 import CustomerServicePortal from "./pages/CustomerServicePortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import Login from "./pages/Login";
+import AdminHrPortal from "./pages/AdminOperations";
+
+// Added pages that exist in repo but were not mounted
+import ProfileDashboard from "./pages/ProfileDashboard";
+import WalletHub from "./pages/WalletHub";
+import BranchOfficePage from "./pages/BranchOffice";
 
 const queryClient = new QueryClient();
 
@@ -66,19 +72,45 @@ function AppShell() {
               }
             >
               <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/dashboard" element={<Navigate to="/" replace />} />
-                <Route path="/create-delivery" element={<CreateDelivery />} />
-                <Route path="/way-management" element={<WayManagement />} />
-                <Route path="/supervisor" element={<SupervisorPortal />} />
-                <Route path="/data-entry" element={<DataEntryPortal />} />
-                <Route path="/customer-service" element={<CustomerServicePortal />} />
-                <Route path="/customer" element={<CustomerPortal />} />
-                <Route path="/deliverymen" element={<Deliverymen />} />
-                <Route path="/merchants" element={<Merchants />} />
-                <Route path="/waybill" element={<Waybill />} />
-                <Route path="/reporting" element={<Reporting />} />
-                <Route path="/settings" element={<Settings />} />
+                {/* Core */}
+                <Route index element={<Dashboard />} />
+                <Route path="dashboard" element={<Navigate to="/" replace />} />
+                <Route path="create-delivery" element={<CreateDelivery />} />
+                <Route path="way-management" element={<WayManagement />} />
+
+                {/* Newly mounted framed pages */}
+                <Route path="profile/*" element={<ProfileDashboard />} />
+                <Route path="wallet/*" element={<WalletHub />} />
+                <Route path="branch-office/*" element={<BranchOfficePage />} />
+
+                {/* Portal groups */}
+                <Route path="supervisor/*" element={<SupervisorPortal />} />
+                <Route path="data-entry/*" element={<DataEntryPortal />} />
+                <Route path="customer-service/*" element={<CustomerServicePortal />} />
+                <Route path="customer/*" element={<CustomerPortal />} />
+                <Route path="merchant/*" element={<Merchants />} />
+                <Route path="deliverymen/*" element={<Deliverymen />} />
+                <Route path="admin-hr/*" element={<AdminHrPortal />} />
+
+                {/* System */}
+                <Route path="waybill/*" element={<Waybill />} />
+                <Route path="reporting/*" element={<Reporting />} />
+                <Route path="settings/*" element={<Settings />} />
+
+                {/* Legacy redirects */}
+                <Route path="merchants" element={<Navigate to="/merchant" replace />} />
+                <Route path="merchants/*" element={<Navigate to="/merchant" replace />} />
+
+                <Route path="admin/hr-admin" element={<Navigate to="/admin-hr" replace />} />
+                <Route path="admin/hr-admin/*" element={<Navigate to="/admin-hr" replace />} />
+
+                <Route path="admin/operations" element={<Navigate to="/admin-hr/admin" replace />} />
+                <Route path="admin/operations/*" element={<Navigate to="/admin-hr/admin" replace />} />
+
+                {/* Optional old labels if production still uses them */}
+                <Route path="receipts" element={<Navigate to="/waybill" replace />} />
+                <Route path="receipts/*" element={<Navigate to="/waybill" replace />} />
+
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
@@ -105,10 +137,7 @@ export default function App() {
                 </PublicOnlyRoute>
               }
             />
-            <Route
-              path="/Login"
-              element={<Navigate to="/login" replace />}
-            />
+            <Route path="/Login" element={<Navigate to="/login" replace />} />
             <Route
               path="/*"
               element={

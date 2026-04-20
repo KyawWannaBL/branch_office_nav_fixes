@@ -1,4 +1,3 @@
-cd "/d/britium_express (1)" && cat > src/pages/WalletHub.tsx <<'EOF'
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownLeft,
@@ -646,4 +645,3 @@ export default function WalletHub() {
     </div>
   );
 }
-EOF

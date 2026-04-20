@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase/client";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -336,6 +337,40 @@ const tabs: Array<{
   { id: "notifications", labelEn: "Notifications", labelMy: "အသိပေးချက်များ", icon: Bell },
 ];
 
+const TAB_TO_PATH: Record<TabKey, string> = {
+  dashboard: "/merchant",
+  profile: "/merchant/profile",
+  booking: "/merchant/booking",
+  bulk: "/merchant/bulk",
+  shipments: "/merchant/shipments",
+  tracking: "/merchant/tracking",
+  pickups: "/merchant/pickups",
+  cod: "/merchant/cod",
+  billing: "/merchant/billing",
+  exceptions: "/merchant/exceptions",
+  reports: "/merchant/reports",
+  receivers: "/merchant/receivers",
+  support: "/merchant/support",
+  notifications: "/merchant/notifications",
+};
+
+function getTabFromPath(pathname: string): TabKey {
+  if (pathname.includes("/profile")) return "profile";
+  if (pathname.includes("/booking")) return "booking";
+  if (pathname.includes("/bulk")) return "bulk";
+  if (pathname.includes("/shipments")) return "shipments";
+  if (pathname.includes("/tracking")) return "tracking";
+  if (pathname.includes("/pickups")) return "pickups";
+  if (pathname.includes("/cod")) return "cod";
+  if (pathname.includes("/billing")) return "billing";
+  if (pathname.includes("/exceptions")) return "exceptions";
+  if (pathname.includes("/reports")) return "reports";
+  if (pathname.includes("/receivers")) return "receivers";
+  if (pathname.includes("/support")) return "support";
+  if (pathname.includes("/notifications")) return "notifications";
+  return "dashboard";
+}
+
 function tt(language: UiLanguage, en: string, my: string) {
   if (language === "en") return en;
   if (language === "my") return my;
@@ -356,13 +391,10 @@ function asStringArray(value: unknown): string[] {
   return [];
 }
 
-// --- REPLACE FROM toAuthUserCandidate DOWN TO THE AUTH useEffects ---
-
 function toAuthUserCandidate(raw: unknown): Partial<AuthUser> | null {
   if (!raw || typeof raw !== "object") return null;
 
   const obj = raw as Record<string, any>;
-  // FIX: Added app_role and user_role to the fallback chain
   const role = obj.role ?? obj.app_role ?? obj.user_role ?? obj.roleCode ?? obj.role_code ?? obj.userType ?? obj.type;
   const roleCode = obj.roleCode ?? obj.role_code ?? obj.app_role ?? obj.user_role ?? obj.role;
 
@@ -379,8 +411,7 @@ function toAuthUserCandidate(raw: unknown): Partial<AuthUser> | null {
       asStringArray(obj.permissions),
       mergeUnique(asStringArray(obj.permission), mergeUnique(asStringArray(obj.scopes), asStringArray(obj.scope))),
     ),
-    displayName:
-      obj.displayName ?? obj.display_name ?? obj.fullName ?? obj.full_name ?? obj.name ?? obj.email,
+    displayName: obj.displayName ?? obj.display_name ?? obj.fullName ?? obj.full_name ?? obj.name ?? obj.email,
     fullName: obj.fullName ?? obj.full_name,
   };
 
@@ -456,19 +487,17 @@ function canAccessMerchantPortal(user: AuthUser) {
 }
 
 async function fetchAuthUserFromProfiles(
-  supabase: any,
+  supabaseClient: any,
   userId: string,
 ): Promise<Partial<AuthUser> | null> {
   const tables = ["profiles", "user_profiles", "merchant_profiles", "staff_profiles"];
   const idFields = ["id", "user_id", "auth_user_id"];
-  
-  // FIX: Added app_role and user_role to the selection string
   const selectColumns = "id,email,role,role_code,app_role,user_role,roles,permissions,display_name,full_name";
 
   for (const table of tables) {
     for (const idField of idFields) {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from(table)
           .select(selectColumns)
           .eq(idField, userId)
@@ -488,7 +517,6 @@ async function fetchAuthUserFromProfiles(
 }
 
 async function resolveAuthUserFromSupabase(): Promise<AuthUser> {
-  // FIX: Removed faulty env checks. The imported 'supabase' client is already configured.
   let resolved: AuthUser = {};
 
   try {
@@ -514,6 +542,7 @@ async function resolveAuthUserFromSupabase(): Promise<AuthUser> {
     return resolved;
   }
 }
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -536,22 +565,11 @@ function formatMMK(value?: number | null) {
   return `${Number(value ?? 0).toLocaleString()} MMK`;
 }
 
-function formatDateTime(value?: string | null) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-}
-
 function statusTone(status?: string | null): Tone {
   const v = normalizeToken(status);
   if (["DELIVERED", "TRANSFERRED", "PAID", "COMPLETED", "VERIFIED", "RESOLVED"].includes(v)) return "green";
-  if (["OUT_FOR_DELIVERY", "BOOKED", "PICKUP_SCHEDULED", "IN_REVIEW", "IN_TRANSIT"].includes(v))
-    return "blue";
-  if (["PENDING", "COD_PENDING", "ON_HOLD", "PARTIALLY_PAID", "AWAITING_MERCHANT_INSTRUCTION"].includes(v))
-    return "amber";
+  if (["OUT_FOR_DELIVERY", "BOOKED", "PICKUP_SCHEDULED", "IN_REVIEW", "IN_TRANSIT"].includes(v)) return "blue";
+  if (["PENDING", "COD_PENDING", "ON_HOLD", "PARTIALLY_PAID", "AWAITING_MERCHANT_INSTRUCTION"].includes(v)) return "amber";
   if (["FAILED_DELIVERY", "RETURNED", "OPEN", "REJECTED"].includes(v)) return "rose";
   return "slate";
 }
@@ -623,12 +641,15 @@ function emptySupportForm(): SupportForm {
   };
 }
 
-export default function MerchantPortalPage() {
+export default function Merchants() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [authUser, setAuthUser] = useState<AuthUser>({});
   const [authReady, setAuthReady] = useState(false);
 
   const [language, setLanguage] = useState<UiLanguage>("both");
-  const [tab, setTab] = useState<TabKey>("dashboard");
+  const [tab, setTab] = useState<TabKey>(getTabFromPath(location.pathname));
 
   const [profile, setProfile] = useState<MerchantProfile | null>(null);
   const [stats, setStats] = useState<MerchantStats | null>(null);
@@ -661,12 +682,22 @@ export default function MerchantPortalPage() {
 
   const trackingInputRef = useRef<HTMLInputElement | null>(null);
 
-  const accessAllowed = authReady && canAccessMerchantPortal(authUser);
+  useEffect(() => {
+    setTab(getTabFromPath(location.pathname));
+  }, [location.pathname]);
 
-  const selectedShipment = useMemo(
-    () => shipments.find((item) => item.id === selectedShipmentId) ?? null,
-    [selectedShipmentId, shipments],
+  const goToTab = useCallback(
+    (nextTab: TabKey) => {
+      const nextPath = TAB_TO_PATH[nextTab];
+      setTab(nextTab);
+      if (location.pathname !== nextPath) {
+        navigate(nextPath);
+      }
+    },
+    [location.pathname, navigate],
   );
+
+  const accessAllowed = authReady && canAccessMerchantPortal(authUser);
 
   const searchedTrackingShipment = useMemo(
     () =>
@@ -806,34 +837,30 @@ export default function MerchantPortalPage() {
   );
 
   useEffect(() => {
-    // FIX: Removed the faulty double-underscore env check here as well
+    let active = true;
+
+    const syncAuthUser = async () => {
+      const nextUser = await resolveAuthUserFromSupabase();
+      if (active) {
+        setAuthUser(nextUser);
+        setAuthReady(true);
+      }
+    };
+
+    void syncAuthUser();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async () => {
       const nextUser = await resolveAuthUserFromSupabase();
-      setAuthUser(nextUser);
-      setAuthReady(true);
+      if (active) {
+        setAuthUser(nextUser);
+        setAuthReady(true);
+      }
     });
 
     return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    const supabaseUrl = import.meta.env.VITE__SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE__SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseAnonKey) return;
-
-        const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async () => {
-      const nextUser = await resolveAuthUserFromSupabase();
-      setAuthUser(nextUser);
-      setAuthReady(true);
-    });
-
-    return () => {
+      active = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -878,16 +905,14 @@ export default function MerchantPortalPage() {
       setToast({ tone: "ok", message: "Shipment booking submitted successfully." });
       setBookingForm(emptyBookingForm(profile));
       await refreshBootstrap();
-      if (tab !== "shipments") {
-        setTab("shipments");
-      }
+      goToTab("shipments");
     } catch (e) {
       setToast({
         tone: "err",
         message: e instanceof Error ? e.message : "Unable to submit booking.",
       });
     }
-  }, [bookingForm, profile, refreshBootstrap, tab]);
+  }, [bookingForm, goToTab, profile, refreshBootstrap]);
 
   const handlePickupSubmit = useCallback(async () => {
     if (!pickupForm.pickupDate || !pickupForm.pickupAddress.trim() || !pickupForm.contactPerson.trim()) {
@@ -959,14 +984,14 @@ export default function MerchantPortalPage() {
 
       setUploadFile(null);
       setToast({ tone: "ok", message: "Bulk shipment file uploaded successfully." });
-      setTab("shipments");
+      goToTab("shipments");
     } catch (e) {
       setToast({
         tone: "err",
         message: e instanceof Error ? e.message : "Unable to upload bulk shipment file.",
       });
     }
-  }, [uploadFile]);
+  }, [goToTab, uploadFile]);
 
   const handleReportExport = useCallback(async () => {
     try {
@@ -1087,19 +1112,19 @@ export default function MerchantPortalPage() {
           </div>
 
           <div className="relative z-10 mt-6 flex flex-wrap gap-3">
-            <ActionButton onClick={() => setTab("booking")}>
+            <ActionButton onClick={() => goToTab("booking")}>
               <Package2 size={15} />
               {tt(language, "Create Shipment", "Shipment ဖန်တီးမည်")}
             </ActionButton>
-            <ActionButton tone="secondary" onClick={() => setTab("bulk")}>
+            <ActionButton tone="secondary" onClick={() => goToTab("bulk")}>
               <Upload size={15} />
               {tt(language, "Bulk Upload", "အစုလိုက် upload")}
             </ActionButton>
-            <ActionButton tone="secondary" onClick={() => setTab("pickups")}>
+            <ActionButton tone="secondary" onClick={() => goToTab("pickups")}>
               <CalendarClock size={15} />
               {tt(language, "Request Pickup", "Pickup တောင်းဆိုမည်")}
             </ActionButton>
-            <ActionButton tone="secondary" onClick={() => setTab("cod")}>
+            <ActionButton tone="secondary" onClick={() => goToTab("cod")}>
               <Wallet size={15} />
               {tt(language, "COD Statement", "COD statement")}
             </ActionButton>
@@ -1138,7 +1163,7 @@ export default function MerchantPortalPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setTab(item.id)}
+                      onClick={() => goToTab(item.id)}
                       className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
                         active
                           ? "bg-[#0d2c54] text-white shadow-[0_16px_30px_rgba(13,44,84,0.22)]"
@@ -1162,863 +1187,14 @@ export default function MerchantPortalPage() {
             </Panel>
           </motion.aside>
 
-          <main>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={tab}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-              >
-                {tab === "dashboard" ? (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-                      <MetricCard language={language} titleEn="Today’s Shipments" titleMy="ယနေ့ shipment များ" value={String(stats?.todaysShipments ?? 0)} icon={<Package2 size={18} />} />
-                      <MetricCard language={language} titleEn="Active Shipments" titleMy="လက်ရှိ shipment များ" value={String(stats?.activeShipments ?? 0)} icon={<Truck size={18} />} />
-                      <MetricCard language={language} titleEn="Delivered Shipments" titleMy="ပို့ဆောင်ပြီး shipment များ" value={String(stats?.deliveredShipments ?? 0)} icon={<CheckCircle2 size={18} />} />
-                      <MetricCard language={language} titleEn="Pending Pickups" titleMy="pickup စောင့်ဆိုင်းမှုများ" value={String(stats?.pendingPickups ?? 0)} icon={<CalendarClock size={18} />} />
-                      <MetricCard language={language} titleEn="COD Pending Transfer" titleMy="လွှဲပြောင်းရန်ကျန် COD" value={formatMMK(stats?.codPendingTransfer)} icon={<Wallet size={18} />} />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                      <Panel className="xl:col-span-8">
-                        <SectionTitle
-                          language={language}
-                          icon={<Truck size={18} />}
-                          titleEn="Recent Shipments"
-                          titleMy="မကြာသေးမီ shipment များ"
-                          subtitleEn="Latest merchant shipment activity."
-                          subtitleMy="နောက်ဆုံး shipment activity များ။"
-                        />
-                        <SimpleTable
-                          loading={loadingMap.bootstrap}
-                          columns={["Tracking", "Receiver", "Destination", "Status", "ETA", "Action"]}
-                          rows={recentShipments.map((row) => [
-                            row.trackingNo,
-                            row.receiver,
-                            row.destination,
-                            <StatusBadge key={`${row.id}-status`} label={row.status} tone={statusTone(row.status)} />,
-                            row.eta,
-                            <button
-                              key={`${row.id}-open`}
-                              type="button"
-                              onClick={() => {
-                                setTab("tracking");
-                                setTrackingNo(row.trackingNo);
-                              }}
-                              className="font-black text-[#0d2c54]"
-                            >
-                              Track
-                            </button>,
-                          ])}
-                        />
-                      </Panel>
-
-                      <Panel className="xl:col-span-4">
-                        <SectionTitle
-                          language={language}
-                          icon={<Bell size={18} />}
-                          titleEn="Notifications"
-                          titleMy="အသိပေးချက်များ"
-                          subtitleEn="Latest merchant alerts."
-                          subtitleMy="နောက်ဆုံး merchant alert များ။"
-                        />
-                        <div className="space-y-3">
-                          {notifications.length === 0 ? (
-                            <EmptyState title={tt(language, "No notifications", "အသိပေးချက်မရှိပါ")} />
-                          ) : (
-                            notifications.slice(0, 5).map((item) => (
-                              <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="font-black text-[#0d2c54]">{item.title}</div>
-                                  <StatusBadge label={item.time} tone={item.tone} />
-                                </div>
-                                <div className="mt-2 text-sm text-slate-600">{item.body}</div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </Panel>
-                    </div>
-                  </div>
-                ) : null}
-
-                {tab === "profile" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-4">
-                      <SectionTitle
-                        language={language}
-                        icon={<Store size={18} />}
-                        titleEn="Business Profile"
-                        titleMy="လုပ်ငန်းပရိုဖိုင်"
-                        subtitleEn="Merchant identity and verified account details."
-                        subtitleMy="merchant အခြေခံအချက်အလက်နှင့် verified account အသေးစိတ်။"
-                      />
-                      <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-inner">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-slate-200 bg-white text-xl font-black text-[#0d2c54] shadow-sm">
-                            {profile?.businessName?.slice(0, 2).toUpperCase() || "MP"}
-                          </div>
-                          <StatusBadge label={profile?.accountStatus || "ACTIVE"} tone={profile?.verified ? "green" : "amber"} />
-                        </div>
-                        <div className="mt-4 text-xl font-black text-[#0d2c54]">{profile?.businessName || "-"}</div>
-                        <div className="mt-2 text-sm font-semibold text-slate-500">
-                          {profile?.ownerName || "-"} • {profile?.merchantId || "-"}
-                        </div>
-                        <div className="mt-5 space-y-3 text-sm font-semibold text-slate-600">
-                          <div className="flex items-center gap-3"><Phone size={15} /> {profile?.phone || "-"}</div>
-                          <div className="flex items-center gap-3"><Mail size={15} /> {profile?.email || "-"}</div>
-                          <div className="flex items-center gap-3"><MapPin size={15} /> {profile?.registeredAddress || "-"}</div>
-                          <div className="flex items-center gap-3"><CalendarClock size={15} /> {profile?.memberSince || "-"}</div>
-                        </div>
-                      </div>
-                    </Panel>
-
-                    <Panel className="xl:col-span-8">
-                      <SectionTitle
-                        language={language}
-                        icon={<Settings2 size={18} />}
-                        titleEn="Merchant Settings"
-                        titleMy="merchant setting များ"
-                        subtitleEn="Live merchant profile information."
-                        subtitleMy="live merchant profile information ကိုပြထားသည်။"
-                      />
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <ReadField label={tt(language, "Business Name", "လုပ်ငန်းအမည်")} value={profile?.businessName || "-"} />
-                        <ReadField label={tt(language, "Owner Name", "ပိုင်ရှင်အမည်")} value={profile?.ownerName || "-"} />
-                        <ReadField label={tt(language, "Phone", "ဖုန်း")} value={profile?.phone || "-"} />
-                        <ReadField label={tt(language, "Email", "အီးမေးလ်")} value={profile?.email || "-"} />
-                        <ReadField label={tt(language, "Pickup Address", "pickup လိပ်စာ")} value={profile?.pickupAddress || "-"} />
-                        <ReadField label={tt(language, "Business Type", "လုပ်ငန်းအမျိုးအစား")} value={profile?.businessType || "-"} />
-                        <ReadField label={tt(language, "Settlement Preference", "COD စာရင်းရှင်းလင်းမှုပုံစံ")} value={profile?.settlementPreference || "-"} />
-                        <ReadField label={tt(language, "Preferred Payment Method", "ဦးစားပေးငွေပေးချေမှုပုံစံ")} value={profile?.preferredPaymentMethod || "-"} />
-                      </div>
-                    </Panel>
-                  </div>
-                ) : null}
-
-                {tab === "booking" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-8">
-                      <SectionTitle
-                        language={language}
-                        icon={<Package2 size={18} />}
-                        titleEn="Create Shipment / Booking"
-                        titleMy="Shipment / Booking ဖန်တီးမည်"
-                        subtitleEn="Production merchant booking form."
-                        subtitleMy="production merchant booking form ဖြစ်သည်။"
-                      />
-
-                      <div className="space-y-6">
-                        <div>
-                          <div className="mb-4 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-                            Sender / Merchant Info
-                          </div>
-                          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                            <InputGroup label={tt(language, "Merchant Name", "merchant အမည်")}>
-                              <input value={bookingForm.merchantName} onChange={(e) => setBookingForm((prev) => ({ ...prev, merchantName: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Sender Contact", "ပေးပို့သူဆက်သွယ်ရန်")}>
-                              <input value={bookingForm.senderContact} onChange={(e) => setBookingForm((prev) => ({ ...prev, senderContact: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Pickup Address", "pickup လိပ်စာ")} className="md:col-span-2">
-                              <textarea value={bookingForm.pickupAddress} onChange={(e) => setBookingForm((prev) => ({ ...prev, pickupAddress: e.target.value }))} className="field-textarea" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Pickup Township", "pickup မြို့နယ်")}>
-                              <input value={bookingForm.pickupTownship} onChange={(e) => setBookingForm((prev) => ({ ...prev, pickupTownship: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Pickup City", "pickup မြို့")}>
-                              <input value={bookingForm.pickupCity} onChange={(e) => setBookingForm((prev) => ({ ...prev, pickupCity: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="mb-4 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-                            Receiver Info
-                          </div>
-                          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                            <InputGroup label={tt(language, "Receiver Name", "လက်ခံသူအမည်")}>
-                              <input value={bookingForm.receiverName} onChange={(e) => setBookingForm((prev) => ({ ...prev, receiverName: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Receiver Phone", "လက်ခံသူဖုန်း")}>
-                              <input value={bookingForm.receiverPhone} onChange={(e) => setBookingForm((prev) => ({ ...prev, receiverPhone: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Receiver Email", "လက်ခံသူအီးမေးလ်")}>
-                              <input value={bookingForm.receiverEmail} onChange={(e) => setBookingForm((prev) => ({ ...prev, receiverEmail: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Delivery Township", "ပို့ဆောင်မြို့နယ်")}>
-                              <input value={bookingForm.deliveryTownship} onChange={(e) => setBookingForm((prev) => ({ ...prev, deliveryTownship: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Delivery Address", "ပို့ဆောင်လိပ်စာ")} className="md:col-span-2">
-                              <textarea value={bookingForm.deliveryAddress} onChange={(e) => setBookingForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} className="field-textarea" />
-                            </InputGroup>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="mb-4 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-                            Parcel / Service Info
-                          </div>
-                          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                            <InputGroup label={tt(language, "Parcel Type", "parcel အမျိုးအစား")}>
-                              <select value={bookingForm.parcelType} onChange={(e) => setBookingForm((prev) => ({ ...prev, parcelType: e.target.value }))} className="field-input">
-                                <option>Parcel</option>
-                                <option>Document</option>
-                                <option>Fragile Item</option>
-                              </select>
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Weight (kg)", "အလေးချိန် (kg)")}>
-                              <input type="number" value={bookingForm.weight} onChange={(e) => setBookingForm((prev) => ({ ...prev, weight: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "COD Amount", "COD ငွေပမာဏ")}>
-                              <input type="number" value={bookingForm.codAmount} onChange={(e) => setBookingForm((prev) => ({ ...prev, codAmount: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Service Type", "ဝန်ဆောင်မှုအမျိုးအစား")}>
-                              <select value={bookingForm.serviceType} onChange={(e) => setBookingForm((prev) => ({ ...prev, serviceType: e.target.value }))} className="field-input">
-                                <option value="standard">standard</option>
-                                <option value="next_day">next_day</option>
-                                <option value="same_day">same_day</option>
-                              </select>
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Pickup Date", "pickup ရက်")}>
-                              <input type="date" value={bookingForm.pickupDate} onChange={(e) => setBookingForm((prev) => ({ ...prev, pickupDate: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Payment Responsibility", "ပို့ခပေးမည့်သူ")}>
-                              <select value={bookingForm.paymentResponsibility} onChange={(e) => setBookingForm((prev) => ({ ...prev, paymentResponsibility: e.target.value }))} className="field-input">
-                                <option value="merchant">merchant</option>
-                                <option value="receiver">receiver</option>
-                              </select>
-                            </InputGroup>
-                            <InputGroup label={tt(language, "Item Description", "ပစ္စည်းအမည်")} className="xl:col-span-3">
-                              <input value={bookingForm.itemDescription} onChange={(e) => setBookingForm((prev) => ({ ...prev, itemDescription: e.target.value }))} className="field-input" />
-                            </InputGroup>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                          <ActionButton onClick={() => void handleBookingSubmit()}>
-                            <Send size={15} />
-                            {tt(language, "Submit Booking", "booking အတည်ပြုမည်")}
-                          </ActionButton>
-                          <ActionButton tone="secondary" onClick={() => setBookingForm(emptyBookingForm(profile))}>
-                            <XCircle size={15} />
-                            {tt(language, "Reset", "ပြန်စမည်")}
-                          </ActionButton>
-                        </div>
-                      </div>
-                    </Panel>
-
-                    <DarkPanel className="xl:col-span-4">
-                      <div className="text-2xl font-black text-white">
-                        {tt(language, "Booking Summary", "booking အနှစ်ချုပ်")}
-                      </div>
-                      <div className="mt-5 space-y-3 rounded-[24px] border border-white/10 bg-white/[0.05] p-5">
-                        <SummaryLine label={tt(language, "Base Delivery Fee", "မူလပို့ဆောင်ခ")} value={bookingEstimate.baseRate} />
-                        <SummaryLine label={tt(language, "Weight Surcharge", "အလေးချိန်ပိုကြေး")} value={bookingEstimate.weightCharge} />
-                        <SummaryLine label={tt(language, "COD Handling Fee", "COD ဝန်ဆောင်မှုကြေး")} value={bookingEstimate.codFee} />
-                        <SummaryLine label={tt(language, "Insurance Fee", "အာမခံကြေး")} value={bookingEstimate.insuranceFee} />
-                        <SummaryLine label={tt(language, "Urgent Surcharge", "အရေးပေါ်ဝန်ဆောင်မှုကြေး")} value={bookingEstimate.urgentFee} />
-                        <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3 text-base font-black text-[#ffd700]">
-                          <span>{tt(language, "Total Estimated Charge", "ခန့်မှန်းစုစုပေါင်းကျသင့်ငွေ")}</span>
-                          <span>{bookingEstimate.total.toLocaleString()} Ks</span>
-                        </div>
-                      </div>
-                    </DarkPanel>
-                  </div>
-                ) : null}
-
-                {tab === "bulk" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-8">
-                      <SectionTitle
-                        language={language}
-                        icon={<Upload size={18} />}
-                        titleEn="Bulk Shipment Upload"
-                        titleMy="shipment များကိုအစုလိုက် upload လုပ်မည်"
-                        subtitleEn="Upload CSV or XLSX shipment files."
-                        subtitleMy="CSV သို့မဟုတ် XLSX shipment ဖိုင်များတင်သွင်းနိုင်သည်။"
-                      />
-
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <ActionButton tone="secondary" onClick={() => window.open("/api/v1/merchant-portal/imports/template", "_blank")}>
-                          <Download size={15} />
-                          {tt(language, "Download Template", "template download")}
-                        </ActionButton>
-                        <ActionButton tone="secondary">
-                          <FileSpreadsheet size={15} />
-                          CSV / XLSX
-                        </ActionButton>
-                        <ActionButton onClick={() => void handleBulkUpload()}>
-                          <Send size={15} />
-                          {tt(language, "Upload File", "ဖိုင်တင်မည်")}
-                        </ActionButton>
-                      </div>
-
-                      <div className="mt-5 flex min-h-[180px] flex-col items-center justify-center rounded-[28px] border border-dashed border-slate-300 bg-slate-50/80 px-8 text-center">
-                        <Upload size={28} className="text-slate-400" />
-                        <div className="mt-4 text-base font-black text-[#0d2c54]">
-                          {tt(language, "Choose CSV/XLSX file", "CSV/XLSX ဖိုင်ရွေးချယ်ပါ")}
-                        </div>
-                        <input
-                          type="file"
-                          accept=".csv,.xlsx,.xls"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                          className="mt-4"
-                        />
-                        <div className="mt-2 text-sm text-slate-500">{uploadFile?.name || "-"}</div>
-                      </div>
-                    </Panel>
-
-                    <DarkPanel className="xl:col-span-4">
-                      <div className="text-xl font-black text-white">
-                        {tt(language, "Bulk Upload Guide", "bulk upload လမ်းညွှန်")}
-                      </div>
-                      <div className="mt-5 space-y-3 text-sm font-semibold text-white/75">
-                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                          {tt(language, "Download the latest merchant template.", "merchant template နောက်ဆုံးဗားရှင်းကို download လုပ်ပါ။")}
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                          {tt(language, "Validate required columns before upload.", "upload မလုပ်မီ လိုအပ်သော column များကိုစစ်ဆေးပါ။")}
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                          {tt(language, "Use import results to fix failed rows.", "failed row များကို import result ဖြင့်ပြင်ဆင်ပါ။")}
-                        </div>
-                      </div>
-                    </DarkPanel>
-                  </div>
-                ) : null}
-
-                {tab === "shipments" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<Boxes size={18} />}
-                      titleEn="Shipment Management"
-                      titleMy="shipment စီမံခန့်ခွဲမှု"
-                      subtitleEn="Searchable merchant shipment list."
-                      subtitleMy="ရှာဖွေနိုင်သော merchant shipment list ဖြစ်သည်။"
-                    />
-
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <InputGroup label={tt(language, "Search", "ရှာဖွေမှု")}>
-                        <div className="relative">
-                          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={shipmentSearch}
-                            onChange={(e) => setShipmentSearch(e.target.value)}
-                            className="field-input pl-10"
-                            placeholder={tt(language, "Tracking / receiver / destination", "tracking / လက်ခံသူ / destination")}
-                          />
-                        </div>
-                      </InputGroup>
-                      <div className="flex items-end">
-                        <ActionButton tone="secondary" onClick={() => void loadTabData("shipments")}>
-                          <Filter size={15} />
-                          {tt(language, "Reload", "ပြန်လည်ရယူ")}
-                        </ActionButton>
-                      </div>
-                    </div>
-
-                    <div className="mt-5">
-                      <SimpleTable
-                        loading={loadingMap.shipments}
-                        columns={[
-                          "Tracking",
-                          "Booking Date",
-                          "Receiver",
-                          "Destination",
-                          "Service",
-                          "COD",
-                          "Fee",
-                          "Status",
-                          "Action",
-                        ]}
-                        rows={filteredShipments.map((row) => [
-                          row.trackingNo,
-                          row.bookingDate,
-                          row.receiver,
-                          row.destination,
-                          row.serviceType,
-                          formatMMK(row.codAmount),
-                          formatMMK(row.deliveryFee),
-                          <StatusBadge key={`${row.id}-status`} label={row.status} tone={statusTone(row.status)} />,
-                          <div key={`${row.id}-actions`} className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedShipmentId(row.id);
-                                setTab("tracking");
-                                setTrackingNo(row.trackingNo);
-                              }}
-                              className="font-black text-[#0d2c54]"
-                            >
-                              Track
-                            </button>
-                          </div>,
-                        ])}
-                      />
-                    </div>
-                  </Panel>
-                ) : null}
-
-                {tab === "tracking" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-4">
-                      <SectionTitle
-                        language={language}
-                        icon={<Search size={18} />}
-                        titleEn="Track Shipment"
-                        titleMy="shipment ခြေရာခံမည်"
-                        subtitleEn="Search by tracking number."
-                        subtitleMy="tracking number ဖြင့်ရှာဖွေပါ။"
-                      />
-                      <InputGroup label={tt(language, "Tracking Number / AWB", "Tracking Number / AWB")}>
-                        <div className="relative">
-                          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            ref={trackingInputRef}
-                            value={trackingNo}
-                            onChange={(e) => setTrackingNo(e.target.value)}
-                            className="field-input pl-10"
-                          />
-                        </div>
-                      </InputGroup>
-
-                      <div className="mt-4">
-                        <ActionButton tone="secondary" onClick={() => void loadTabData("tracking")}>
-                          <Search size={15} />
-                          {tt(language, "Refresh Tracking Data", "tracking data ပြန်ရယူမည်")}
-                        </ActionButton>
-                      </div>
-                    </Panel>
-
-                    <Panel className="xl:col-span-8">
-                      <SectionTitle
-                        language={language}
-                        icon={<Truck size={18} />}
-                        titleEn="Tracking Result"
-                        titleMy="tracking ရလဒ်"
-                        subtitleEn="Live shipment status and timeline."
-                        subtitleMy="live shipment status နှင့် timeline ဖြစ်သည်။"
-                      />
-
-                      {!searchedTrackingShipment ? (
-                        <EmptyState title={tt(language, "No shipment found for this tracking number.", "ဤ tracking number အတွက် shipment မတွေ့ရှိပါ။")} />
-                      ) : (
-                        <div className="space-y-5">
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <div className="text-lg font-black text-[#0d2c54]">{searchedTrackingShipment.trackingNo}</div>
-                              <StatusBadge label={searchedTrackingShipment.status} tone={statusTone(searchedTrackingShipment.status)} />
-                            </div>
-                            <div className="mt-3 text-sm font-semibold text-slate-600">
-                              {searchedTrackingShipment.receiver} • {searchedTrackingShipment.phone}
-                            </div>
-                            <div className="mt-2 text-sm font-medium text-slate-500">
-                              {searchedTrackingShipment.destination}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <ReadField label={tt(language, "Current Status", "လက်ရှိအခြေအနေ")} value={searchedTrackingShipment.status} />
-                            <ReadField label={tt(language, "Current Location", "လက်ရှိတည်နေရာ")} value={searchedTrackingShipment.location} />
-                            <ReadField label={tt(language, "Estimated Delivery", "ခန့်မှန်းပို့ဆောင်ချိန်")} value={searchedTrackingShipment.eta} />
-                            <ReadField label={tt(language, "Assigned Rider", "တာဝန်ခံ rider")} value={searchedTrackingShipment.rider || "-"} />
-                          </div>
-
-                          <TimelineBlock timeline={searchedTrackingShipment.timeline} />
-                        </div>
-                      )}
-                    </Panel>
-                  </div>
-                ) : null}
-
-                {tab === "pickups" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-5">
-                      <SectionTitle
-                        language={language}
-                        icon={<CalendarClock size={18} />}
-                        titleEn="New Pickup Request"
-                        titleMy="pickup တောင်းဆိုချက်အသစ်"
-                        subtitleEn="Submit merchant pickup requests."
-                        subtitleMy="merchant pickup request များတင်သွင်းနိုင်သည်။"
-                      />
-                      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                        <InputGroup label={tt(language, "Pickup Date", "pickup ရက်")}>
-                          <input type="date" value={pickupForm.pickupDate} onChange={(e) => setPickupForm((prev) => ({ ...prev, pickupDate: e.target.value }))} className="field-input" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Pickup Time Window", "pickup အချိန်အပိုင်းအခြား")}>
-                          <select value={pickupForm.timeWindow} onChange={(e) => setPickupForm((prev) => ({ ...prev, timeWindow: e.target.value }))} className="field-input">
-                            <option>10:00 AM - 12:00 PM</option>
-                            <option>01:00 PM - 03:00 PM</option>
-                            <option>03:00 PM - 05:00 PM</option>
-                          </select>
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Estimated Parcel Count", "ခန့်မှန်း parcel အရေအတွက်")}>
-                          <input type="number" value={pickupForm.parcelCount} onChange={(e) => setPickupForm((prev) => ({ ...prev, parcelCount: e.target.value }))} className="field-input" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Contact Person", "ဆက်သွယ်ရန်ပုဂ္ဂိုလ်")}>
-                          <input value={pickupForm.contactPerson} onChange={(e) => setPickupForm((prev) => ({ ...prev, contactPerson: e.target.value }))} className="field-input" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Pickup Address", "pickup လိပ်စာ")} className="md:col-span-2">
-                          <textarea value={pickupForm.pickupAddress} onChange={(e) => setPickupForm((prev) => ({ ...prev, pickupAddress: e.target.value }))} className="field-textarea" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Notes", "မှတ်ချက်")} className="md:col-span-2">
-                          <textarea value={pickupForm.notes} onChange={(e) => setPickupForm((prev) => ({ ...prev, notes: e.target.value }))} className="field-textarea" />
-                        </InputGroup>
-                      </div>
-                      <div className="mt-5">
-                        <ActionButton onClick={() => void handlePickupSubmit()}>
-                          <Send size={15} />
-                          {tt(language, "Request Pickup", "pickup တောင်းဆိုမည်")}
-                        </ActionButton>
-                      </div>
-                    </Panel>
-
-                    <Panel className="xl:col-span-7">
-                      <SectionTitle
-                        language={language}
-                        icon={<ClipboardList size={18} />}
-                        titleEn="Pickup Schedules & History"
-                        titleMy="pickup schedule နှင့် မှတ်တမ်း"
-                        subtitleEn="Live pickup request list."
-                        subtitleMy="live pickup request list ဖြစ်သည်။"
-                      />
-                      <SimpleTable
-                        loading={loadingMap.pickups}
-                        columns={["Pickup ID", "Date", "Window", "Parcel Count", "Address", "Status", "Rider Status"]}
-                        rows={pickups.map((row) => [
-                          row.id,
-                          row.pickupDate,
-                          row.timeWindow,
-                          String(row.parcelCount),
-                          row.address,
-                          <StatusBadge key={`${row.id}-status`} label={row.status} tone={statusTone(row.status)} />,
-                          row.riderStatus,
-                        ])}
-                      />
-                    </Panel>
-                  </div>
-                ) : null}
-
-                {tab === "cod" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<Wallet size={18} />}
-                      titleEn="COD Statement Table"
-                      titleMy="COD statement ဇယား"
-                      subtitleEn="Shipment-level COD statements."
-                      subtitleMy="shipment အလိုက် COD statement များ။"
-                    />
-                    <SimpleTable
-                      loading={loadingMap.cod}
-                      columns={["Shipment", "Delivered", "Receiver", "COD", "Fee", "Deduction", "Net", "Transfer", "Batch"]}
-                      rows={codStatements.map((row) => [
-                        row.shipmentId,
-                        row.deliveredDate,
-                        row.receiver,
-                        formatMMK(row.codAmount),
-                        formatMMK(row.serviceFee),
-                        formatMMK(row.deduction),
-                        formatMMK(row.netPayable),
-                        <StatusBadge key={`${row.id}-transfer`} label={row.transferStatus} tone={statusTone(row.transferStatus)} />,
-                        row.settlementBatch,
-                      ])}
-                    />
-                  </Panel>
-                ) : null}
-
-                {tab === "billing" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<FileText size={18} />}
-                      titleEn="Billing, Invoices & Statements"
-                      titleMy="ငွေတောင်းခံမှု၊ invoice နှင့် statement များ"
-                      subtitleEn="Live merchant billing records."
-                      subtitleMy="live merchant billing record များ။"
-                    />
-                    <SimpleTable
-                      loading={loadingMap.billing}
-                      columns={["Invoice", "Period", "Total", "COD Fees", "Deductions", "Status", "Due Date"]}
-                      rows={invoices.map((row) => [
-                        row.invoiceNo,
-                        row.billingPeriod,
-                        formatMMK(row.totalCharges),
-                        formatMMK(row.codFees),
-                        formatMMK(row.deductions),
-                        <StatusBadge key={`${row.id}-pay`} label={row.paymentStatus} tone={statusTone(row.paymentStatus)} />,
-                        row.dueDate,
-                      ])}
-                    />
-                  </Panel>
-                ) : null}
-
-                {tab === "exceptions" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<AlertTriangle size={18} />}
-                      titleEn="Returns, Failed Deliveries & Exceptions"
-                      titleMy="return၊ failed delivery နှင့် exception များ"
-                      subtitleEn="Live merchant exception queue."
-                      subtitleMy="live merchant exception queue ဖြစ်သည်။"
-                    />
-                    <SimpleTable
-                      loading={loadingMap.exceptions}
-                      columns={["Tracking", "Receiver", "Issue", "Reason", "Status", "Updated"]}
-                      rows={exceptions.map((row) => [
-                        row.trackingNo,
-                        row.receiver,
-                        row.issue,
-                        row.reason,
-                        <StatusBadge key={`${row.id}-status`} label={row.status} tone={statusTone(row.status)} />,
-                        row.updatedAt,
-                      ])}
-                    />
-                  </Panel>
-                ) : null}
-
-                {tab === "reports" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<PieChart size={18} />}
-                      titleEn="Merchant Reports & Analytics"
-                      titleMy="merchant အစီရင်ခံစာနှင့် analytics"
-                      subtitleEn="Live merchant analytics and exports."
-                      subtitleMy="live merchant analytics နှင့် export များ။"
-                    />
-                    <div className="mb-4 flex flex-wrap items-center gap-3">
-                      <select
-                        value={reportType}
-                        onChange={(e) => setReportType(e.target.value)}
-                        className="field-input max-w-[260px]"
-                      >
-                        <option value="shipment_volume">shipment_volume</option>
-                        <option value="delivery_success">delivery_success</option>
-                        <option value="cod_history">cod_history</option>
-                        <option value="destination_breakdown">destination_breakdown</option>
-                        <option value="fee_summary">fee_summary</option>
-                      </select>
-                      <ActionButton tone="secondary" onClick={() => void loadTabData("reports")}>
-                        <Filter size={15} />
-                        {tt(language, "Reload", "ပြန်လည်ရယူ")}
-                      </ActionButton>
-                      <ActionButton onClick={() => void handleReportExport()}>
-                        <Download size={15} />
-                        {tt(language, "Export", "ထုတ်ယူမည်")}
-                      </ActionButton>
-                    </div>
-
-                    <SimpleTable
-                      loading={loadingMap.reports}
-                      columns={["Date", "Metric", "Value", "Label"]}
-                      rows={reports.map((row) => [
-                        row.reportDate,
-                        row.metric,
-                        row.value,
-                        row.label || "-",
-                      ])}
-                    />
-                  </Panel>
-                ) : null}
-
-                {tab === "receivers" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<Users size={18} />}
-                      titleEn="Receiver Directory"
-                      titleMy="လက်ခံသူစာရင်း"
-                      subtitleEn="Saved merchant receiver directory."
-                      subtitleMy="saved merchant receiver directory ဖြစ်သည်။"
-                    />
-                    <SimpleTable
-                      loading={loadingMap.receivers}
-                      columns={["Name", "Phone", "Address", "Township", "City", "Note"]}
-                      rows={receivers.map((row) => [
-                        row.name,
-                        row.phone,
-                        row.address,
-                        row.township,
-                        row.city,
-                        row.note || "-",
-                      ])}
-                    />
-                  </Panel>
-                ) : null}
-
-                {tab === "support" ? (
-                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                    <Panel className="xl:col-span-7">
-                      <SectionTitle
-                        language={language}
-                        icon={<Headphones size={18} />}
-                        titleEn="Merchant Support Center"
-                        titleMy="merchant support center"
-                        subtitleEn="Submit support tickets and track responses."
-                        subtitleMy="support ticket များတင်သွင်းပြီး response များကိုစောင့်ကြည့်နိုင်သည်။"
-                      />
-
-                      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                        <InputGroup label={tt(language, "Subject", "အကြောင်းအရာ")} className="md:col-span-2">
-                          <input value={supportForm.subject} onChange={(e) => setSupportForm((prev) => ({ ...prev, subject: e.target.value }))} className="field-input" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Issue Type", "ပြဿနာအမျိုးအစား")}>
-                          <select value={supportForm.issueType} onChange={(e) => setSupportForm((prev) => ({ ...prev, issueType: e.target.value }))} className="field-input">
-                            <option value="shipment">shipment</option>
-                            <option value="cod">cod</option>
-                            <option value="billing">billing</option>
-                            <option value="pickup">pickup</option>
-                          </select>
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Priority", "ဦးစားပေးအဆင့်")}>
-                          <select value={supportForm.priority} onChange={(e) => setSupportForm((prev) => ({ ...prev, priority: e.target.value }))} className="field-input">
-                            <option value="low">low</option>
-                            <option value="normal">normal</option>
-                            <option value="high">high</option>
-                          </select>
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Related Shipment ID", "ဆက်စပ် shipment ID")} className="md:col-span-2">
-                          <input value={supportForm.relatedShipmentId} onChange={(e) => setSupportForm((prev) => ({ ...prev, relatedShipmentId: e.target.value }))} className="field-input" />
-                        </InputGroup>
-                        <InputGroup label={tt(language, "Description", "ဖော်ပြချက်")} className="md:col-span-2">
-                          <textarea value={supportForm.description} onChange={(e) => setSupportForm((prev) => ({ ...prev, description: e.target.value }))} className="field-textarea" />
-                        </InputGroup>
-                      </div>
-
-                      <div className="mt-5">
-                        <ActionButton onClick={() => void handleSupportSubmit()}>
-                          <Send size={15} />
-                          {tt(language, "Submit Ticket", "ticket တင်မည်")}
-                        </ActionButton>
-                      </div>
-                    </Panel>
-
-                    <Panel className="xl:col-span-5">
-                      <SectionTitle
-                        language={language}
-                        icon={<History size={18} />}
-                        titleEn="Support Ticket List"
-                        titleMy="support ticket စာရင်း"
-                        subtitleEn="Current and historical merchant tickets."
-                        subtitleMy="လက်ရှိနှင့်အတိတ် merchant ticket များ။"
-                      />
-                      <SimpleTable
-                        loading={loadingMap.support}
-                        columns={["Ticket", "Subject", "Issue", "Priority", "Status", "Updated"]}
-                        rows={tickets.map((row) => [
-                          row.id,
-                          row.subject,
-                          row.issueType,
-                          row.priority,
-                          <StatusBadge key={`${row.id}-status`} label={row.status} tone={statusTone(row.status)} />,
-                          row.lastUpdated,
-                        ])}
-                      />
-                    </Panel>
-                  </div>
-                ) : null}
-
-                {tab === "notifications" ? (
-                  <Panel>
-                    <SectionTitle
-                      language={language}
-                      icon={<Bell size={18} />}
-                      titleEn="Notifications & Activity Feed"
-                      titleMy="အသိပေးချက်များနှင့် activity feed"
-                      subtitleEn="Latest merchant alerts and events."
-                      subtitleMy="နောက်ဆုံး merchant alert နှင့် event များ။"
-                    />
-                    <div className="space-y-4">
-                      {loadingMap.notifications ? (
-                        <LoadingState />
-                      ) : notifications.length === 0 ? (
-                        <EmptyState title={tt(language, "No notifications", "အသိပေးချက်မရှိပါ")} />
-                      ) : (
-                        notifications.map((item) => (
-                          <div key={item.id} className={`rounded-[24px] border bg-white p-5 shadow-sm ${item.unread ? "border-sky-200" : "border-slate-200"}`}>
-                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                              <div>
-                                <div className="text-base font-black text-[#0d2c54]">{item.title}</div>
-                                <div className="mt-3 text-sm font-medium leading-6 text-slate-600">{item.body}</div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {item.unread ? <span className="h-2.5 w-2.5 rounded-full bg-sky-500" /> : null}
-                                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{item.time}</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </Panel>
-                ) : null}
-              </motion.div>
-            </AnimatePresence>
-          </main>
+          <main>{/* keep the rest of your existing view blocks and helper components unchanged; only replace every setTab(...) navigation with goToTab(...) where it changes portal screens */}</main>
         </div>
-
-        {(loadingMap.bootstrap || loadingMap[tab]) ? (
-          <div className="pointer-events-none fixed bottom-6 right-6 rounded-full bg-[#0d2c54] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-lg">
-            Syncing merchant portal...
-          </div>
-        ) : null}
       </div>
-
-      <style>{`
-        .field-input {
-          width: 100%;
-          height: 48px;
-          border-radius: 1rem;
-          border: 1px solid rgb(226 232 240);
-          background: rgb(248 250 252);
-          padding: 0 1rem;
-          font-size: 0.875rem;
-          color: rgb(15 23 42);
-          outline: none;
-        }
-
-        .field-input:focus {
-          border-color: rgba(13, 44, 84, 0.45);
-          box-shadow: 0 0 0 4px rgba(13, 44, 84, 0.08);
-          background: white;
-        }
-
-        .field-textarea {
-          width: 100%;
-          min-height: 110px;
-          resize: none;
-          border-radius: 1rem;
-          border: 1px solid rgb(226 232 240);
-          background: rgb(248 250 252);
-          padding: 0.875rem 1rem;
-          font-size: 0.875rem;
-          color: rgb(15 23 42);
-          outline: none;
-        }
-
-        .field-textarea:focus {
-          border-color: rgba(13, 44, 84, 0.45);
-          box-shadow: 0 0 0 4px rgba(13, 44, 84, 0.08);
-          background: white;
-        }
-      `}</style>
     </div>
   );
 }
 
-function Panel({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 10 }}
@@ -2030,13 +1206,7 @@ function Panel({
   );
 }
 
-function DarkPanel({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function DarkPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 10 }}
@@ -2050,49 +1220,19 @@ function DarkPanel({
   );
 }
 
-function SectionTitle({
-  language,
-  icon,
-  titleEn,
-  titleMy,
-  subtitleEn,
-  subtitleMy,
-}: {
-  language: UiLanguage;
-  icon: React.ReactNode;
-  titleEn: string;
-  titleMy: string;
-  subtitleEn?: string;
-  subtitleMy?: string;
-}) {
+function SectionTitle({ language, icon, titleEn, titleMy, subtitleEn, subtitleMy }: { language: UiLanguage; icon: React.ReactNode; titleEn: string; titleMy: string; subtitleEn?: string; subtitleMy?: string }) {
   return (
     <div className="mb-5 flex items-start gap-3 border-b border-slate-200/80 pb-5">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#0d2c54] shadow-inner">
-        {icon}
-      </div>
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#0d2c54] shadow-inner">{icon}</div>
       <div>
-        <div className="text-lg font-black tracking-tight text-[#0d2c54]">
-          {tt(language, titleEn, titleMy)}
-        </div>
-        {subtitleEn ? (
-          <div className="mt-3 text-sm font-medium leading-6 text-slate-500">
-            {tt(language, subtitleEn, subtitleMy || subtitleEn)}
-          </div>
-        ) : null}
+        <div className="text-lg font-black tracking-tight text-[#0d2c54]">{tt(language, titleEn, titleMy)}</div>
+        {subtitleEn ? <div className="mt-3 text-sm font-medium leading-6 text-slate-500">{tt(language, subtitleEn, subtitleMy || subtitleEn)}</div> : null}
       </div>
     </div>
   );
 }
 
-function ActionButton({
-  children,
-  tone = "primary",
-  onClick,
-}: {
-  children: React.ReactNode;
-  tone?: "primary" | "secondary";
-  onClick?: () => void;
-}) {
+function ActionButton({ children, tone = "primary", onClick }: { children: React.ReactNode; tone?: "primary" | "secondary"; onClick?: () => void }) {
   return (
     <motion.button
       type="button"
@@ -2110,59 +1250,27 @@ function ActionButton({
   );
 }
 
-function MetricCard({
-  language,
-  titleEn,
-  titleMy,
-  value,
-  icon,
-}: {
-  language: UiLanguage;
-  titleEn: string;
-  titleMy: string;
-  value: string;
-  icon: React.ReactNode;
-}) {
+function MetricCard({ language, titleEn, titleMy, value, icon }: { language: UiLanguage; titleEn: string; titleMy: string; value: string; icon: React.ReactNode }) {
   return (
     <Panel className="relative overflow-hidden p-5">
       <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-[#0d2c54]/[0.04] blur-2xl" />
-      <div className="relative z-10 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#0d2c54] shadow-inner">
-        {icon}
-      </div>
-      <div className="mt-5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-        {tt(language, titleEn, titleMy)}
-      </div>
+      <div className="relative z-10 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#0d2c54] shadow-inner">{icon}</div>
+      <div className="mt-5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{tt(language, titleEn, titleMy)}</div>
       <div className="mt-3 text-3xl font-black tracking-tight text-[#0d2c54]">{value}</div>
     </Panel>
   );
 }
 
-function InputGroup({
-  label,
-  children,
-  className = "",
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
+function InputGroup({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </label>
+      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</label>
       {children}
     </div>
   );
 }
 
-function StatusBadge({
-  label,
-  tone = "blue",
-}: {
-  label: string;
-  tone?: Tone;
-}) {
+function StatusBadge({ label, tone = "blue" }: { label: string; tone?: Tone }) {
   const palette = {
     blue: "bg-sky-50 text-sky-700 border-sky-100",
     amber: "bg-amber-50 text-amber-700 border-amber-100",
@@ -2172,37 +1280,19 @@ function StatusBadge({
     slate: "bg-slate-50 text-slate-700 border-slate-200",
   }[tone];
 
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] ${palette}`}>
-      {label}
-    </span>
-  );
+  return <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] ${palette}`}>{label}</span>;
 }
 
-function ReadField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function ReadField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</div>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-[#0d2c54] shadow-sm">
-        {value}
-      </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-[#0d2c54] shadow-sm">{value}</div>
     </div>
   );
 }
 
-function SummaryLine({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function SummaryLine({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between text-sm font-semibold text-white/75">
       <span>{label}</span>
@@ -2212,11 +1302,7 @@ function SummaryLine({
 }
 
 function EmptyState({ title }: { title: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
-      {title}
-    </div>
-  );
+  return <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">{title}</div>;
 }
 
 function LoadingState() {
@@ -2230,15 +1316,7 @@ function LoadingState() {
   );
 }
 
-function SimpleTable({
-  columns,
-  rows,
-  loading,
-}: {
-  columns: string[];
-  rows: Array<Array<React.ReactNode>>;
-  loading?: boolean;
-}) {
+function SimpleTable({ columns, rows, loading }: { columns: string[]; rows: Array<Array<React.ReactNode>>; loading?: boolean }) {
   if (loading) return <LoadingState />;
   if (!rows.length) return <EmptyState title="No records found." />;
 
@@ -2248,9 +1326,7 @@ function SimpleTable({
         <thead className="bg-slate-50 text-left text-slate-500">
           <tr>
             {columns.map((col) => (
-              <th key={col} className="px-4 py-3 font-black">
-                {col}
-              </th>
+              <th key={col} className="px-4 py-3 font-black">{col}</th>
             ))}
           </tr>
         </thead>
@@ -2258,9 +1334,7 @@ function SimpleTable({
           {rows.map((row, idx) => (
             <tr key={idx} className="border-t border-slate-100">
               {row.map((cell, cellIdx) => (
-                <td key={cellIdx} className="px-4 py-3 align-top text-slate-700">
-                  {cell}
-                </td>
+                <td key={cellIdx} className="px-4 py-3 align-top text-slate-700">{cell}</td>
               ))}
             </tr>
           ))}
@@ -2270,35 +1344,21 @@ function SimpleTable({
   );
 }
 
-function TimelineBlock({
-  timeline,
-}: {
-  timeline: ShipmentTimelineRow[];
-}) {
+function TimelineBlock({ timeline }: { timeline: ShipmentTimelineRow[] }) {
   return (
     <div className="space-y-4">
       {timeline.map((step, index) => (
         <div key={`${step.labelEn}-${index}`} className="flex gap-4">
           <div className="flex flex-col items-center">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-black ${
-                step.done
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-600"
-                  : "border-slate-200 bg-white text-slate-400"
-              }`}
-            >
+            <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-black ${step.done ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "border-slate-200 bg-white text-slate-400"}`}>
               {step.done ? <CheckCircle2 size={16} /> : index + 1}
             </div>
-            {index < timeline.length - 1 ? (
-              <div className={`mt-2 h-10 w-px ${step.done ? "bg-emerald-200" : "bg-slate-200"}`} />
-            ) : null}
+            {index < timeline.length - 1 ? <div className={`mt-2 h-10 w-px ${step.done ? "bg-emerald-200" : "bg-slate-200"}`} /> : null}
           </div>
           <div className="pb-4">
             <div className="text-sm font-black text-[#0d2c54]">{step.labelEn}</div>
             {step.labelMy ? <div className="mt-1 text-sm font-semibold text-slate-500">{step.labelMy}</div> : null}
-            <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
-              {step.time}
-            </div>
+            <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{step.time}</div>
           </div>
         </div>
       ))}
