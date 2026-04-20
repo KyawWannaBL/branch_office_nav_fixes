@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type HTMLAttributes } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -420,7 +420,7 @@ function TextInput({
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+ inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   icon?: ReactNode;
   invalid?: boolean;
   dark?: boolean;

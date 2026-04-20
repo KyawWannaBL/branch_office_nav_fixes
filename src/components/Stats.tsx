@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -7,7 +8,7 @@ interface StatsCardProps {
   title: string;
   value: string | number;
   change?: number;
-  icon: React.ReactNode;
+  icon: ReactNode;
   trend?: "up" | "down";
 }
 
@@ -61,7 +62,7 @@ export function StatsCard({ title, value, change, icon, trend }: StatsCardProps)
 }
 
 interface MetricGridProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function MetricGrid({ children }: MetricGridProps) {
