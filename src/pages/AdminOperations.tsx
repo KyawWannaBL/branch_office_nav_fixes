@@ -1,6 +1,5 @@
-// @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   RefreshCw,
   Save,
@@ -14,99 +13,119 @@ import {
   Briefcase,
   Building2,
   Clock3,
-  BadgeCheck,
-  Siren,
-  Fingerprint,
   BookOpen,
   ClipboardList,
   AlertTriangle,
-} from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useLanguage } from '@/hooks/useLanguage';
-import { getPortalBanner } from '@/lib/portalBanner';
-import { addressText, safeText } from '@/lib/displayValue';
-import { PortalBanner } from '@/components/portal/PortalBanner';
-import { PhotoUploaderField } from '@/components/workflow/PhotoUploaderField';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+} from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 
-function tt(language: string, en: string, mm: string) {
-  return language === 'mm' ? mm : en;
+type ViewKey = "overview" | "employees" | "approvals" | "admin" | "reports";
+
+function currentView(pathname: string): ViewKey {
+  if (pathname.includes("/employees")) return "employees";
+  if (pathname.includes("/approvals")) return "approvals";
+  if (pathname.includes("/admin")) return "admin";
+  if (pathname.includes("/reports")) return "reports";
+  return "overview";
 }
 
-function currentView(pathname: string) {
-  if (pathname.includes('/employees')) return 'employees';
-  if (pathname.includes('/approvals')) return 'approvals';
-  if (pathname.includes('/admin')) return 'admin';
-  if (pathname.includes('/reports')) return 'reports';
-  return 'overview';
+function tt(en: string, mm: string) {
+  return `${en} / ${mm}`;
 }
 
 function labelize(value: unknown) {
-  return String(value || 'unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return String(value || "unknown")
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function fmtCurrency(value: unknown) {
-  const num = Number(value || 0);
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number.isFinite(num) ? num : 0)} MMK`;
-}
-
-function pick(source: any, keys: string[], fallback = '') {
+function pick(source: any, keys: string[], fallback = "") {
   for (const key of keys) {
     const value = source?.[key];
-    if (value !== undefined && value !== null && value !== '') return value;
+    if (value !== undefined && value !== null && value !== "") return value;
   }
   return fallback;
 }
 
 function statusClass(value: unknown) {
-  const status = String(value || '').toLowerCase();
-  if (status.includes('approve') || status.includes('active') || status.includes('complete') || status.includes('resolved')) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  const status = String(value || "").toLowerCase();
+  if (
+    status.includes("approve") ||
+    status.includes("active") ||
+    status.includes("complete") ||
+    status.includes("resolved")
+  ) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
-  if (status.includes('reject') || status.includes('fail') || status.includes('inactive') || status.includes('disciplinary')) {
-    return 'border-red-200 bg-red-50 text-red-700';
+  if (
+    status.includes("reject") ||
+    status.includes("fail") ||
+    status.includes("inactive") ||
+    status.includes("disciplinary")
+  ) {
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
-  if (status.includes('pending') || status.includes('review') || status.includes('hold')) {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (status.includes("pending") || status.includes("review") || status.includes("hold")) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
   }
-  return 'border-slate-200 bg-slate-100 text-slate-700';
-}
-
-function scopeRows(rows: any[], scopeBranchId: string, isGlobal: boolean) {
-  if (isGlobal || !scopeBranchId) return rows;
-  return rows.filter((row) => {
-    const keys = ['branch_id', 'from_branch_id', 'to_branch_id', 'destination_branch_id', 'home_branch_id'];
-    const values = keys.map((key) => row?.[key]).filter(Boolean);
-    if (!values.length) return true;
-    return values.includes(scopeBranchId);
-  });
+  return "border-slate-200 bg-slate-100 text-slate-700";
 }
 
 function isLeaveActive(row: any) {
-  const status = String(row?.status || '').toLowerCase();
-  if (status !== 'approved') return false;
+  const status = String(row?.status || "").toLowerCase();
+  if (status !== "approved") return false;
+
   const today = new Date();
   const start = row?.start_date ? new Date(row.start_date) : null;
   const end = row?.end_date ? new Date(row.end_date) : null;
   if (!start || !end) return false;
+
   return today >= start && today <= end;
 }
 
 function summarizeAttendance(rows: any[], employeeId: string) {
-  return rows.filter((row) => String(row?.employee_id || '') === String(employeeId || '')).length;
+  return rows.filter((row) => String(row?.employee_id || "") === String(employeeId || "")).length;
+}
+
+async function fetchRows(table: string, orderColumn = "created_at", ascending = false) {
+  try {
+    let query = supabase.from(table).select("*");
+    if (orderColumn) query = query.order(orderColumn, { ascending });
+    const { data, error } = await query;
+    if (error) {
+      console.warn(`[AdminHrPortal] ${table}`, error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn(`[AdminHrPortal] ${table}`, err);
+    return [];
+  }
+}
+
+async function createAuditLog(action: string, refType?: string, refId?: string | null) {
+  try {
+    await supabase.from("audit_logs").insert({
+      portal: "admin_hr",
+      action,
+      ref_type: refType || null,
+      ref_id: refId || null,
+      created_at: new Date().toISOString(),
+    });
+  } catch {
+    // ignore audit failures
+  }
 }
 
 export default function AdminHrPortal() {
-  const { language } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
-  const [view, setView] = useState(currentView(location.pathname));
+
+  const [view, setView] = useState<ViewKey>(currentView(location.pathname));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
   const [profile, setProfile] = useState<any>(null);
   const [branches, setBranches] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -121,75 +140,45 @@ export default function AdminHrPortal() {
   const [assetAssignments, setAssetAssignments] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [documentPath, setDocumentPath] = useState('');
+
   const [employeeForm, setEmployeeForm] = useState({
-    full_name: '',
-    email: '',
-    phone: '',
-    employee_type: 'Operations Staff',
-    department: 'Operations',
-    title: 'Executive',
-    branch_id: '',
-    employment_status: 'active',
+    full_name: "",
+    email: "",
+    phone: "",
+    employee_type: "Operations Staff",
+    department: "Operations",
+    title: "Executive",
+    branch_id: "",
+    employment_status: "active",
   });
+
   const [leaveForm, setLeaveForm] = useState({
-    employee_id: '',
-    leave_type: 'annual',
-    start_date: '',
-    end_date: '',
-    reason: '',
+    employee_id: "",
+    leave_type: "annual",
+    start_date: "",
+    end_date: "",
+    reason: "",
   });
-  const [documentForm, setDocumentForm] = useState({
-    employee_id: '',
-    document_type: 'contract',
-    title: '',
-    status: 'uploaded',
-  });
+
   const [notificationForm, setNotificationForm] = useState({
-    title: '',
-    body: '',
-    route: '/admin-hr',
-    priority: 'normal',
+    title: "",
+    body: "",
+    route: "/admin-hr",
+    priority: "normal",
   });
 
-  useEffect(() => setView(currentView(location.pathname)), [location.pathname]);
-
-  async function fetchRows(table: string, orderColumn = 'created_at', ascending = false) {
-    try {
-      let query = supabase.from(table).select('*');
-      if (orderColumn) query = query.order(orderColumn, { ascending });
-      const { data, error } = await query;
-      if (error) {
-        console.warn(`[AdminHrPortal] ${table}`, error.message);
-        return [];
-      }
-      return data || [];
-    } catch (err) {
-      console.warn(`[AdminHrPortal] ${table}`, err);
-      return [];
-    }
-  }
-
-  async function createAuditLog(action: string, meta: any = {}) {
-    try {
-      await supabase.from('audit_logs').insert({
-        user_id: profile?.id || profile?.user_id || null,
-        portal: 'admin_hr',
-        action,
-        ref_type: meta?.ref_type || null,
-        ref_id: meta?.ref_id || null,
-        created_at: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.warn('[AdminHrPortal] audit log skipped', err);
-    }
-  }
+  useEffect(() => {
+    setView(currentView(location.pathname));
+  }, [location.pathname]);
 
   async function loadData() {
     setLoading(true);
-    setError('');
+    setError("");
+
     try {
-      const { data: auth } = await supabase.auth.getUser();
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
 
       const [
         branchRows,
@@ -206,113 +195,107 @@ export default function AdminHrPortal() {
         notificationRows,
         auditRows,
       ] = await Promise.all([
-        fetchRows('branches', 'code', true),
-        fetchRows('users', 'created_at', false),
-        fetchRows('roles', 'name', true),
-        fetchRows('role_bindings', 'created_at', false),
-        fetchRows('employees', 'created_at', false),
-        fetchRows('attendance', 'attendance_date', false),
-        fetchRows('leave_requests', 'created_at', false),
-        fetchRows('hr_documents', 'created_at', false),
-        fetchRows('training_records', 'created_at', false),
-        fetchRows('disciplinary_cases', 'created_at', false),
-        fetchRows('asset_assignments', 'created_at', false),
-        fetchRows('notifications', 'created_at', false),
-        fetchRows('audit_logs', 'created_at', false),
+        fetchRows("branches", "code", true),
+        fetchRows("users", "created_at", false),
+        fetchRows("roles", "name", true),
+        fetchRows("role_bindings", "created_at", false),
+        fetchRows("employees", "created_at", false),
+        fetchRows("attendance", "attendance_date", false),
+        fetchRows("leave_requests", "created_at", false),
+        fetchRows("hr_documents", "created_at", false),
+        fetchRows("training_records", "created_at", false),
+        fetchRows("disciplinary_cases", "created_at", false),
+        fetchRows("asset_assignments", "created_at", false),
+        fetchRows("notifications", "created_at", false),
+        fetchRows("audit_logs", "created_at", false),
       ]);
 
-      const currentEmployee = employeeRows.find((row: any) =>
-        String(pick(row, ['user_id', 'auth_user_id'])) === String(auth.user?.id || '') ||
-        String(pick(row, ['email'])) === String(auth.user?.email || '')
-      ) || null;
+      const currentEmployee =
+        employeeRows.find(
+          (row: any) =>
+            String(pick(row, ["user_id", "auth_user_id"])) === String(authUser?.id || "") ||
+            String(pick(row, ["email"])) === String(authUser?.email || "")
+        ) || null;
 
-      const currentUser = userRows.find((row: any) =>
-        String(pick(row, ['id', 'auth_user_id'])) === String(auth.user?.id || '') ||
-        String(pick(row, ['email'])) === String(auth.user?.email || '')
-      ) || null;
+      const currentUser =
+        userRows.find(
+          (row: any) =>
+            String(pick(row, ["id", "auth_user_id"])) === String(authUser?.id || "") ||
+            String(pick(row, ["email"])) === String(authUser?.email || "")
+        ) || null;
 
-      const currentBindingRows = roleBindingRows.filter((row: any) =>
-        String(row?.user_id || '') === String(currentUser?.id || auth.user?.id || '') ||
-        String(row?.employee_id || '') === String(currentEmployee?.id || '')
-      );
-
-      const boundRoleIds = new Set(currentBindingRows.map((row: any) => row.role_id));
-      const currentRoleNames = roleRows
-        .filter((row: any) => boundRoleIds.has(row.id))
-        .map((row: any) => String(row?.name || ''));
-
-      const mergedProfile = {
+      setProfile({
         ...currentUser,
         ...currentEmployee,
-        currentRoleNames,
-        email: pick(currentUser, ['email'], pick(currentEmployee, ['email'], auth.user?.email || '')),
-      };
+        email: pick(currentUser, ["email"], pick(currentEmployee, ["email"], authUser?.email || "")),
+      });
 
-      const isGlobalAdmin = currentRoleNames.some((name: string) => /super|admin|owner|hr manager|hr admin/i.test(name)) ||
-        /admin|manager|head/i.test(String(pick(mergedProfile, ['employee_type', 'title', 'department', 'role'], '')));
-      const scopeBranchId = isGlobalAdmin ? '' : String(pick(mergedProfile, ['branch_id'], ''));
-
-      setProfile(mergedProfile);
       setBranches(branchRows);
-      setUsers(scopeRows(userRows, scopeBranchId, isGlobalAdmin));
+      setUsers(userRows);
       setRoles(roleRows);
       setRoleBindings(roleBindingRows);
-      setEmployees(scopeRows(employeeRows, scopeBranchId, isGlobalAdmin));
-      setAttendance(scopeRows(attendanceRows, scopeBranchId, isGlobalAdmin));
-      setLeaveRequests(scopeRows(leaveRows, scopeBranchId, isGlobalAdmin));
-      setDocuments(scopeRows(documentRows, scopeBranchId, isGlobalAdmin));
-      setTrainingRecords(scopeRows(trainingRows, scopeBranchId, isGlobalAdmin));
-      setDisciplinaryCases(scopeRows(disciplinaryRows, scopeBranchId, isGlobalAdmin));
-      setAssetAssignments(scopeRows(assetRows, scopeBranchId, isGlobalAdmin));
-      setNotifications(scopeRows(notificationRows, scopeBranchId, isGlobalAdmin));
-      setAuditLogs(scopeRows(auditRows, scopeBranchId, isGlobalAdmin));
+      setEmployees(employeeRows);
+      setAttendance(attendanceRows);
+      setLeaveRequests(leaveRows);
+      setDocuments(documentRows);
+      setTrainingRecords(trainingRows);
+      setDisciplinaryCases(disciplinaryRows);
+      setAssetAssignments(assetRows);
+      setNotifications(notificationRows);
+      setAuditLogs(auditRows);
 
-      setEmployeeForm((prev) => ({ ...prev, branch_id: prev.branch_id || scopeBranchId || pick(branchRows?.[0], ['id'], '') }));
-      setLeaveForm((prev) => ({ ...prev, employee_id: prev.employee_id || pick(currentEmployee, ['id'], pick(employeeRows?.[0], ['id'], '')) }));
-      setDocumentForm((prev) => ({ ...prev, employee_id: prev.employee_id || pick(currentEmployee, ['id'], pick(employeeRows?.[0], ['id'], '')) }));
+      setEmployeeForm((prev) => ({
+        ...prev,
+        branch_id: prev.branch_id || pick(branchRows?.[0], ["id"], ""),
+      }));
+      setLeaveForm((prev) => ({
+        ...prev,
+        employee_id: prev.employee_id || pick(currentEmployee, ["id"], pick(employeeRows?.[0], ["id"], "")),
+      }));
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message || 'Unable to load Admin & HR portal data.');
+      setError(err?.message || "Unable to load Admin & HR portal data.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    void loadData();
+  }, []);
 
   async function createEmployee() {
     setSaving(true);
     try {
-      const payload = {
-        full_name: employeeForm.full_name,
-        email: employeeForm.email,
-        phone: employeeForm.phone,
-        employee_type: employeeForm.employee_type,
-        department: employeeForm.department,
-        title: employeeForm.title,
-        branch_id: employeeForm.branch_id || null,
-        employment_status: employeeForm.employment_status,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      const { data, error } = await supabase
+        .from("employees")
+        .insert({
+          ...employeeForm,
+          branch_id: employeeForm.branch_id || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("*")
+        .maybeSingle();
 
-      const { data, error } = await supabase.from('employees').insert(payload).select('*').maybeSingle();
       if (error) throw error;
 
-      await createAuditLog('employee_created', { ref_type: 'employee', ref_id: data?.id });
+      await createAuditLog("employee_created", "employee", data?.id || null);
+
       setEmployeeForm({
-        full_name: '',
-        email: '',
-        phone: '',
-        employee_type: 'Operations Staff',
-        department: 'Operations',
-        title: 'Executive',
+        full_name: "",
+        email: "",
+        phone: "",
+        employee_type: "Operations Staff",
+        department: "Operations",
+        title: "Executive",
         branch_id: employeeForm.branch_id,
-        employment_status: 'active',
+        employment_status: "active",
       });
+
       await loadData();
     } catch (err) {
       console.error(err);
+      setError("Unable to create employee.");
     } finally {
       setSaving(false);
     }
@@ -320,68 +303,61 @@ export default function AdminHrPortal() {
 
   async function createLeaveRequest() {
     if (!leaveForm.employee_id) return;
+
     setSaving(true);
     try {
-      const { data, error } = await supabase.from('leave_requests').insert({
-        employee_id: leaveForm.employee_id,
-        leave_type: leaveForm.leave_type,
-        start_date: leaveForm.start_date,
-        end_date: leaveForm.end_date,
-        reason: leaveForm.reason,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      }).select('*').maybeSingle();
+      const { data, error } = await supabase
+        .from("leave_requests")
+        .insert({
+          employee_id: leaveForm.employee_id,
+          leave_type: leaveForm.leave_type,
+          start_date: leaveForm.start_date,
+          end_date: leaveForm.end_date,
+          reason: leaveForm.reason,
+          status: "pending",
+          created_at: new Date().toISOString(),
+        })
+        .select("*")
+        .maybeSingle();
+
       if (error) throw error;
 
-      await createAuditLog('leave_requested', { ref_type: 'leave_request', ref_id: data?.id });
-      setLeaveForm({ ...leaveForm, start_date: '', end_date: '', reason: '' });
+      await createAuditLog("leave_requested", "leave_request", data?.id || null);
+
+      setLeaveForm((prev) => ({
+        ...prev,
+        start_date: "",
+        end_date: "",
+        reason: "",
+      }));
+
       await loadData();
     } catch (err) {
       console.error(err);
+      setError("Unable to create leave request.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function updateLeaveStatus(row: any, status: string) {
+  async function updateLeaveStatus(row: any, nextStatus: string) {
     setSaving(true);
     try {
       const { error } = await supabase
-        .from('leave_requests')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', row.id);
+        .from("leave_requests")
+        .update({
+          status: nextStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+
       if (error) throw error;
 
-      await createAuditLog(`leave_${status}`, { ref_type: 'leave_request', ref_id: row.id });
+      await createAuditLog(`leave_${nextStatus}`, "leave_request", row.id);
       await loadData();
     } catch (err) {
       console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function createHrDocument() {
-    if (!documentForm.employee_id || !documentPath) return;
-    setSaving(true);
-    try {
-      const { data, error } = await supabase.from('hr_documents').insert({
-        employee_id: documentForm.employee_id,
-        document_type: documentForm.document_type,
-        title: documentForm.title || documentForm.document_type,
-        status: documentForm.status,
-        bucket: 'hr',
-        object_key: documentPath,
-        created_at: new Date().toISOString(),
-      }).select('*').maybeSingle();
-      if (error) throw error;
-
-      await createAuditLog('hr_document_uploaded', { ref_type: 'hr_document', ref_id: data?.id });
-      setDocumentPath('');
-      setDocumentForm({ ...documentForm, title: '' });
-      await loadData();
-    } catch (err) {
-      console.error(err);
+      setError("Unable to update leave request.");
     } finally {
       setSaving(false);
     }
@@ -389,58 +365,88 @@ export default function AdminHrPortal() {
 
   async function createNotification() {
     if (!notificationForm.title || !notificationForm.body) return;
+
     setSaving(true);
     try {
-      const { data, error } = await supabase.from('notifications').insert({
-        user_id: null,
-        title: notificationForm.title,
-        body: notificationForm.body,
-        route: notificationForm.route,
-        priority: notificationForm.priority,
-        created_at: new Date().toISOString(),
-      }).select('*').maybeSingle();
+      const { data, error } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: null,
+          title: notificationForm.title,
+          body: notificationForm.body,
+          route: notificationForm.route,
+          priority: notificationForm.priority,
+          created_at: new Date().toISOString(),
+        })
+        .select("*")
+        .maybeSingle();
+
       if (error) throw error;
 
-      await createAuditLog('broadcast_notification_created', { ref_type: 'notification', ref_id: data?.id });
-      setNotificationForm({ title: '', body: '', route: '/admin-hr', priority: 'normal' });
+      await createAuditLog("broadcast_notification_created", "notification", data?.id || null);
+
+      setNotificationForm({
+        title: "",
+        body: "",
+        route: "/admin-hr",
+        priority: "normal",
+      });
+
       await loadData();
     } catch (err) {
       console.error(err);
+      setError("Unable to create notice.");
     } finally {
       setSaving(false);
     }
   }
 
   const roleMap = useMemo(() => {
-    const map = new Map();
-    roles.forEach((row: any) => map.set(row.id, row));
+    const map = new Map<string, any>();
+    roles.forEach((row: any) => map.set(String(row.id), row));
     return map;
   }, [roles]);
 
   const branchMap = useMemo(() => {
-    const map = new Map();
-    branches.forEach((row: any) => map.set(row.id, row));
+    const map = new Map<string, any>();
+    branches.forEach((row: any) => map.set(String(row.id), row));
     return map;
   }, [branches]);
 
   const employeeStats = useMemo(() => {
-    const active = employees.filter((row: any) => String(pick(row, ['employment_status'], 'active')).toLowerCase() === 'active').length;
+    const active = employees.filter(
+      (row: any) => String(pick(row, ["employment_status"], "active")).toLowerCase() === "active"
+    ).length;
     const onLeave = leaveRequests.filter(isLeaveActive).length;
-    const pendingApprovals = leaveRequests.filter((row: any) => String(row?.status || '').toLowerCase() === 'pending').length;
-    const assetsInUse = assetAssignments.filter((row: any) => String(row?.status || '').toLowerCase() !== 'returned').length;
-    const openCases = disciplinaryCases.filter((row: any) => !['resolved', 'closed'].includes(String(row?.status || '').toLowerCase())).length;
-    const completedTraining = trainingRecords.filter((row: any) => String(row?.status || '').toLowerCase() === 'completed').length;
+    const pendingApprovals = leaveRequests.filter(
+      (row: any) => String(row?.status || "").toLowerCase() === "pending"
+    ).length;
+    const assetsInUse = assetAssignments.filter(
+      (row: any) => String(row?.status || "").toLowerCase() !== "returned"
+    ).length;
+    const openCases = disciplinaryCases.filter(
+      (row: any) => !["resolved", "closed"].includes(String(row?.status || "").toLowerCase())
+    ).length;
+    const completedTraining = trainingRecords.filter(
+      (row: any) => String(row?.status || "").toLowerCase() === "completed"
+    ).length;
+
     return { active, onLeave, pendingApprovals, assetsInUse, openCases, completedTraining };
   }, [employees, leaveRequests, assetAssignments, disciplinaryCases, trainingRecords]);
 
   const branchSummary = useMemo(() => {
     return branches.map((branch: any) => {
-      const team = employees.filter((row: any) => String(row?.branch_id || '') === String(branch.id || ''));
-      const pending = leaveRequests.filter((row: any) => String(row?.branch_id || '') === String(branch.id || '') && String(row?.status || '').toLowerCase() === 'pending');
+      const team = employees.filter((row: any) => String(row?.branch_id || "") === String(branch.id || ""));
+      const pending = leaveRequests.filter(
+        (row: any) =>
+          String(row?.branch_id || "") === String(branch.id || "") &&
+          String(row?.status || "").toLowerCase() === "pending"
+      );
+
       return {
         id: branch.id,
-        code: pick(branch, ['code'], '—'),
-        name: pick(branch, ['name', 'city'], 'Branch'),
+        code: pick(branch, ["code"], "—"),
+        name: pick(branch, ["name", "city"], "Branch"),
         headcount: team.length,
         pending: pending.length,
       };
@@ -449,19 +455,33 @@ export default function AdminHrPortal() {
 
   const employeeCards = useMemo(() => {
     return employees.map((row: any) => {
-      const employeeId = String(row?.id || '');
-      const bindingRows = roleBindings.filter((binding: any) => String(binding?.employee_id || '') === employeeId || String(binding?.user_id || '') === String(row?.user_id || ''));
+      const employeeId = String(row?.id || "");
+      const bindingRows = roleBindings.filter(
+        (binding: any) =>
+          String(binding?.employee_id || "") === employeeId ||
+          String(binding?.user_id || "") === String(row?.user_id || "")
+      );
+
       const roleNames = bindingRows
-        .map((binding: any) => roleMap.get(binding.role_id))
+        .map((binding: any) => roleMap.get(String(binding.role_id)))
         .filter(Boolean)
         .map((role: any) => role.name);
+
       return {
         ...row,
         roleNames,
         attendanceCount: summarizeAttendance(attendance, employeeId),
-        documentCount: documents.filter((doc: any) => String(doc?.employee_id || '') === employeeId).length,
-        trainingCount: trainingRecords.filter((doc: any) => String(doc?.employee_id || '') === employeeId).length,
-        assetCount: assetAssignments.filter((doc: any) => String(doc?.employee_id || '') === employeeId && String(doc?.status || '').toLowerCase() !== 'returned').length,
+        documentCount: documents.filter(
+          (doc: any) => String(doc?.employee_id || "") === employeeId
+        ).length,
+        trainingCount: trainingRecords.filter(
+          (doc: any) => String(doc?.employee_id || "") === employeeId
+        ).length,
+        assetCount: assetAssignments.filter(
+          (doc: any) =>
+            String(doc?.employee_id || "") === employeeId &&
+            String(doc?.status || "").toLowerCase() !== "returned"
+        ).length,
       };
     });
   }, [employees, roleBindings, roleMap, attendance, documents, trainingRecords, assetAssignments]);
@@ -470,435 +490,596 @@ export default function AdminHrPortal() {
     const totalEmployees = employees.length;
     const activeEmployees = employeeStats.active;
     const pendingApprovals = employeeStats.pendingApprovals;
-    const documentCoverage = totalEmployees ? Math.round((documents.length / totalEmployees) * 100) : 0;
-    const trainingCoverage = totalEmployees ? Math.round((employeeStats.completedTraining / totalEmployees) * 100) : 0;
+    const documentCoverage = totalEmployees
+      ? Math.round((documents.length / totalEmployees) * 100)
+      : 0;
+    const trainingCoverage = totalEmployees
+      ? Math.round((employeeStats.completedTraining / totalEmployees) * 100)
+      : 0;
     const unreadNotifications = notifications.filter((row: any) => !row?.read_at).length;
-    return { totalEmployees, activeEmployees, pendingApprovals, documentCoverage, trainingCoverage, unreadNotifications };
+
+    return {
+      totalEmployees,
+      activeEmployees,
+      pendingApprovals,
+      documentCoverage,
+      trainingCoverage,
+      unreadNotifications,
+    };
   }, [employees, employeeStats, documents, notifications]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center rounded-[32px] border border-slate-200 bg-white p-10 shadow-sm">
+        <div className="inline-flex items-center gap-3 text-sm font-semibold text-slate-600">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Loading Admin & HR portal...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <PortalBanner
-        image={getPortalBanner(view === 'employees' ? 'hr_employees' : view === 'approvals' ? 'hr_approvals' : view === 'admin' ? 'admin_governance' : view === 'reports' ? 'hr_reports' : 'admin_hr')}
-        title={tt(language, 'Admin & HR Portal', 'Admin & HR Portal')}
-        subtitle={tt(language, 'Workforce operations, approvals, governance, and branch support.', 'ဝန်ထမ်းစီမံခန့်ခွဲမှု၊ approvals၊ governance နှင့် branch support')}
-      >
-        <Button variant="outline" onClick={loadData} disabled={loading || saving}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          {tt(language, 'Refresh', 'ပြန်လည်ရယူမည်')}
-        </Button>
-      </PortalBanner>
+      <HeroCard
+        title={tt("Admin & HR Portal", "Admin & HR Portal")}
+        subtitle={tt(
+          "Workforce operations, approvals, governance, and branch support.",
+          "ဝန်ထမ်းစီမံခန့်ခွဲမှု၊ approvals၊ governance နှင့် branch support"
+        )}
+        actions={
+          <ActionButton onClick={() => void loadData()} disabled={loading || saving}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </ActionButton>
+        }
+      />
 
-      <div className="grid gap-2 rounded-2xl bg-muted p-1 md:grid-cols-5">
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'overview' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/admin-hr')}>{tt(language, 'Overview', 'Overview')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'employees' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/admin-hr/employees')}>{tt(language, 'Employees', 'Employees')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'approvals' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/admin-hr/approvals')}>{tt(language, 'Approvals', 'Approvals')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'admin' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/admin-hr/admin')}>{tt(language, 'Admin Controls', 'Admin Controls')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'reports' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/admin-hr/reports')}>{tt(language, 'Reports', 'Reports')}</button>
+      <div className="grid gap-2 rounded-2xl bg-slate-100 p-1 md:grid-cols-5">
+        <TabButton active={view === "overview"} onClick={() => navigate("/admin-hr")}>
+          Overview
+        </TabButton>
+        <TabButton active={view === "employees"} onClick={() => navigate("/admin-hr/employees")}>
+          Employees
+        </TabButton>
+        <TabButton active={view === "approvals"} onClick={() => navigate("/admin-hr/approvals")}>
+          Approvals
+        </TabButton>
+        <TabButton active={view === "admin"} onClick={() => navigate("/admin-hr/admin")}>
+          Admin Controls
+        </TabButton>
+        <TabButton active={view === "reports"} onClick={() => navigate("/admin-hr/reports")}>
+          Reports
+        </TabButton>
       </div>
 
       {error ? (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-700">{safeText(error)}</CardContent>
-        </Card>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
       ) : null}
 
-      {view === 'overview' && (
+      {view === "overview" && (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'Active Employees', 'Active Employees')}</div><Users className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.active}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'On Leave', 'On Leave')}</div><Clock3 className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.onLeave}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'Pending Approvals', 'Pending Approvals')}</div><ClipboardList className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.pendingApprovals}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'Assets In Use', 'Assets In Use')}</div><Briefcase className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.assetsInUse}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'Open Cases', 'Open Cases')}</div><AlertTriangle className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.openCases}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="flex items-center justify-between"><div className="text-sm text-muted-foreground">{tt(language, 'Training Complete', 'Training Complete')}</div><BookOpen className="h-4 w-4 text-muted-foreground" /></div><div className="mt-2 text-4xl font-semibold">{employeeStats.completedTraining}</div></CardContent></Card>
+            <MetricCard title="Active Employees" value={employeeStats.active} icon={<Users className="h-5 w-5" />} />
+            <MetricCard title="On Leave" value={employeeStats.onLeave} icon={<Clock3 className="h-5 w-5" />} />
+            <MetricCard title="Pending Approvals" value={employeeStats.pendingApprovals} icon={<ClipboardList className="h-5 w-5" />} />
+            <MetricCard title="Assets In Use" value={employeeStats.assetsInUse} icon={<Briefcase className="h-5 w-5" />} />
+            <MetricCard title="Open Cases" value={employeeStats.openCases} icon={<AlertTriangle className="h-5 w-5" />} />
+            <MetricCard title="Training Complete" value={employeeStats.completedTraining} icon={<BookOpen className="h-5 w-5" />} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Workforce Snapshot', 'Workforce Snapshot')}</CardTitle>
-                <CardDescription>{safeText(pick(profile, ['full_name', 'name', 'email'], 'Britium Express'))}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <Panel title="Workforce Snapshot" subtitle={pick(profile, ["full_name", "name", "email"], "Britium Express")}>
+              <div className="space-y-3">
                 {employeeCards.slice(0, 8).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">{safeText(pick(row, ['full_name', 'name'], 'Unnamed Employee'))}</div>
-                        <div className="text-sm text-muted-foreground">{safeText(pick(row, ['title', 'employee_type', 'department'], 'Team Member'))} · {safeText(pick(branchMap.get(row?.branch_id), ['name', 'code'], 'All Branches'))}</div>
-                        <div className="text-sm text-muted-foreground">{safeText(pick(row, ['email'], '—'))} · {safeText(pick(row, ['phone'], '—'))}</div>
-                      </div>
-                      <Badge className={statusClass(pick(row, ['employment_status'], 'active'))}>{labelize(pick(row, ['employment_status'], 'active'))}</Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-full bg-muted px-2 py-1">{row.attendanceCount} attendance</span>
-                      <span className="rounded-full bg-muted px-2 py-1">{row.documentCount} docs</span>
-                      <span className="rounded-full bg-muted px-2 py-1">{row.trainingCount} training</span>
-                      <span className="rounded-full bg-muted px-2 py-1">{row.assetCount} assets</span>
-                      {row.roleNames.slice(0, 2).map((roleName: string) => <span key={roleName} className="rounded-full bg-muted px-2 py-1">{safeText(roleName)}</span>)}
-                    </div>
-                  </div>
+                  <InfoCard
+                    key={row.id}
+                    title={pick(row, ["full_name", "name"], "Unnamed Employee")}
+                    subtitle={`${pick(row, ["title", "employee_type", "department"], "Team Member")} · ${pick(branchMap.get(String(row?.branch_id || "")), ["name", "code"], "All Branches")}`}
+                    meta={`${pick(row, ["email"], "—")} · ${pick(row, ["phone"], "—")}`}
+                    status={pick(row, ["employment_status"], "active")}
+                    pills={[
+                      `${row.attendanceCount} attendance`,
+                      `${row.documentCount} docs`,
+                      `${row.trainingCount} training`,
+                      `${row.assetCount} assets`,
+                      ...row.roleNames.slice(0, 2),
+                    ]}
+                  />
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
             <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{tt(language, 'Branch Coverage', 'Branch Coverage')}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <Panel title="Branch Coverage">
+                <div className="space-y-3">
                   {branchSummary.slice(0, 6).map((row: any) => (
-                    <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                    <div key={row.id} className="rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
                       <div>
-                        <div className="font-semibold">{safeText(row.name)}</div>
-                        <div className="text-sm text-muted-foreground">{safeText(row.code)}</div>
+                        <div className="font-semibold text-slate-900">{row.name}</div>
+                        <div className="text-sm text-slate-500">{row.code}</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold">{row.headcount}</div>
-                        <div className="text-sm text-muted-foreground">{row.pending} pending</div>
+                        <div className="font-semibold text-slate-900">{row.headcount}</div>
+                        <div className="text-sm text-slate-500">{row.pending} pending</div>
                       </div>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </Panel>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>{tt(language, 'Recent Alerts', 'Recent Alerts')}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <Panel title="Recent Alerts">
+                <div className="space-y-3">
                   {notifications.slice(0, 5).map((row: any) => (
-                    <div key={row.id} className="rounded-xl border p-4">
+                    <div key={row.id} className="rounded-xl border border-slate-200 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-semibold">{safeText(row.title)}</div>
-                        <Badge className={statusClass(pick(row, ['priority'], 'normal'))}>{labelize(pick(row, ['priority'], 'normal'))}</Badge>
+                        <div className="font-semibold text-slate-900">{pick(row, ["title"], "Alert")}</div>
+                        <StatusBadge label={pick(row, ["priority"], "normal")} />
                       </div>
-                      <div className="mt-1 text-sm text-muted-foreground">{safeText(row.body)}</div>
+                      <div className="mt-1 text-sm text-slate-500">{pick(row, ["body"], "")}</div>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </Panel>
             </div>
           </div>
         </div>
       )}
 
-      {view === 'employees' && (
+      {view === "employees" && (
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Employee Directory', 'Employee Directory')}</CardTitle>
-                <CardDescription>{tt(language, 'Create and manage branch-level workforce records.', 'branch workforce records များကို စီမံရန်')}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input placeholder={tt(language, 'Full Name', 'အမည်အပြည့်အစုံ')} value={employeeForm.full_name} onChange={(e) => setEmployeeForm({ ...employeeForm, full_name: e.target.value })} />
-                  <Input placeholder="Email" value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} />
-                  <Input placeholder={tt(language, 'Phone', 'ဖုန်း')} value={employeeForm.phone} onChange={(e) => setEmployeeForm({ ...employeeForm, phone: e.target.value })} />
-                  <Input placeholder={tt(language, 'Department', 'ဌာန')} value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} />
-                  <Input placeholder={tt(language, 'Job Title', 'ရာထူး')} value={employeeForm.title} onChange={(e) => setEmployeeForm({ ...employeeForm, title: e.target.value })} />
-                  <Input placeholder={tt(language, 'Employee Type', 'ဝန်ထမ်းအမျိုးအစား')} value={employeeForm.employee_type} onChange={(e) => setEmployeeForm({ ...employeeForm, employee_type: e.target.value })} />
-                  <Input placeholder={tt(language, 'Branch ID', 'Branch ID')} value={employeeForm.branch_id} onChange={(e) => setEmployeeForm({ ...employeeForm, branch_id: e.target.value })} />
-                  <Input placeholder={tt(language, 'Status', 'အခြေအနေ')} value={employeeForm.employment_status} onChange={(e) => setEmployeeForm({ ...employeeForm, employment_status: e.target.value })} />
-                </div>
-                <Button onClick={createEmployee} disabled={saving}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  {tt(language, 'Save Employee', 'ဝန်ထမ်းသိမ်းမည်')}
-                </Button>
-              </CardContent>
-            </Card>
+            <Panel
+              title="Employee Directory"
+              subtitle="Create and manage branch-level workforce records."
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <TextInput placeholder="Full Name" value={employeeForm.full_name} onChange={(v) => setEmployeeForm({ ...employeeForm, full_name: v })} />
+                <TextInput placeholder="Email" value={employeeForm.email} onChange={(v) => setEmployeeForm({ ...employeeForm, email: v })} />
+                <TextInput placeholder="Phone" value={employeeForm.phone} onChange={(v) => setEmployeeForm({ ...employeeForm, phone: v })} />
+                <TextInput placeholder="Department" value={employeeForm.department} onChange={(v) => setEmployeeForm({ ...employeeForm, department: v })} />
+                <TextInput placeholder="Job Title" value={employeeForm.title} onChange={(v) => setEmployeeForm({ ...employeeForm, title: v })} />
+                <TextInput placeholder="Employee Type" value={employeeForm.employee_type} onChange={(v) => setEmployeeForm({ ...employeeForm, employee_type: v })} />
+                <TextInput placeholder="Branch ID" value={employeeForm.branch_id} onChange={(v) => setEmployeeForm({ ...employeeForm, branch_id: v })} />
+                <TextInput placeholder="Status" value={employeeForm.employment_status} onChange={(v) => setEmployeeForm({ ...employeeForm, employment_status: v })} />
+              </div>
+              <div className="mt-4">
+                <ActionButton onClick={() => void createEmployee()} disabled={saving}>
+                  <UserPlus className="h-4 w-4" />
+                  Save Employee
+                </ActionButton>
+              </div>
+            </Panel>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'HR Document Upload', 'HR Document Upload')}</CardTitle>
-                <CardDescription>{tt(language, 'Attach contracts, IDs, policy acknowledgements, and onboarding records.', 'contract, ID, policy acknowledgement နှင့် onboarding records')}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input placeholder={tt(language, 'Employee ID', 'Employee ID')} value={documentForm.employee_id} onChange={(e) => setDocumentForm({ ...documentForm, employee_id: e.target.value })} />
-                <Input placeholder={tt(language, 'Document Type', 'Document Type')} value={documentForm.document_type} onChange={(e) => setDocumentForm({ ...documentForm, document_type: e.target.value })} />
-                <Input placeholder={tt(language, 'Document Title', 'Document Title')} value={documentForm.title} onChange={(e) => setDocumentForm({ ...documentForm, title: e.target.value })} />
-                <PhotoUploaderField label={tt(language, 'HR File', 'HR File')} onUploaded={(path) => setDocumentPath(path)} />
-                <Button onClick={createHrDocument} disabled={saving || !documentPath}>
-                  <Save className="mr-2 h-4 w-4" />
-                  {tt(language, 'Save Document', 'Document သိမ်းမည်')}
-                </Button>
-              </CardContent>
-            </Card>
+            <Panel title="HR Snapshot">
+              <div className="space-y-3">
+                {employeeCards.slice(0, 8).map((row: any) => (
+                  <InfoCard
+                    key={row.id}
+                    title={pick(row, ["full_name", "name"], "Unnamed Employee")}
+                    subtitle={`${pick(row, ["department", "employee_type"], "Operations")} · ${pick(row, ["title"], "Staff")}`}
+                    meta={`${pick(row, ["email"], "—")} · ${pick(row, ["phone"], "—")}`}
+                    status={pick(row, ["employment_status"], "active")}
+                    pills={[
+                      pick(branchMap.get(String(row?.branch_id || "")), ["code", "name"], "Branch"),
+                      ...row.roleNames.length ? row.roleNames : ["No role binding"],
+                      `${row.attendanceCount} attendance`,
+                      `${row.documentCount} docs`,
+                      `${row.trainingCount} training`,
+                      `${row.assetCount} assets`,
+                    ]}
+                  />
+                ))}
+              </div>
+            </Panel>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{tt(language, 'Employee Cards', 'Employee Cards')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {employeeCards.map((row: any) => (
-                <div key={row.id} className="rounded-xl border p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{safeText(pick(row, ['full_name', 'name'], 'Unnamed Employee'))}</div>
-                      <div className="text-sm text-muted-foreground">{safeText(pick(row, ['department', 'employee_type'], 'Operations'))} · {safeText(pick(row, ['title'], 'Staff'))}</div>
-                      <div className="text-sm text-muted-foreground">{safeText(pick(row, ['email'], '—'))} · {safeText(pick(row, ['phone'], '—'))}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className={statusClass(pick(row, ['employment_status'], 'active'))}>{labelize(pick(row, ['employment_status'], 'active'))}</Badge>
-                      <Badge>{safeText(pick(branchMap.get(row?.branch_id), ['code', 'name'], 'Branch'))}</Badge>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {row.roleNames.length ? row.roleNames.map((roleName: string) => <span key={roleName} className="rounded-full bg-muted px-2 py-1">{safeText(roleName)}</span>) : <span className="rounded-full bg-muted px-2 py-1">No role binding</span>}
-                    <span className="rounded-full bg-muted px-2 py-1">{row.attendanceCount} attendance</span>
-                    <span className="rounded-full bg-muted px-2 py-1">{row.documentCount} docs</span>
-                    <span className="rounded-full bg-muted px-2 py-1">{row.trainingCount} training</span>
-                    <span className="rounded-full bg-muted px-2 py-1">{row.assetCount} assets</span>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </div>
       )}
 
-      {view === 'approvals' && (
+      {view === "approvals" && (
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Leave Request Queue', 'Leave Request Queue')}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <Panel title="Leave Request Queue">
+              <div className="space-y-3">
                 {leaveRequests.map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4">
+                  <div key={row.id} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold">{safeText(pick(employees.find((employee: any) => String(employee.id) === String(row.employee_id)), ['full_name', 'name'], row.employee_id))}</div>
-                        <div className="text-sm text-muted-foreground">{labelize(row.leave_type)} · {safeText(row.start_date)} → {safeText(row.end_date)}</div>
-                        <div className="text-sm text-muted-foreground">{safeText(row.reason)}</div>
+                        <div className="font-semibold text-slate-900">
+                          {pick(
+                            employees.find((employee: any) => String(employee.id) === String(row.employee_id)),
+                            ["full_name", "name"],
+                            String(row.employee_id || "Employee")
+                          )}
+                        </div>
+                        <div className="text-sm text-slate-500">
+                          {labelize(row.leave_type)} · {pick(row, ["start_date"], "")} → {pick(row, ["end_date"], "")}
+                        </div>
+                        <div className="text-sm text-slate-500">{pick(row, ["reason"], "")}</div>
                       </div>
-                      <Badge className={statusClass(row.status)}>{labelize(row.status)}</Badge>
+                      <StatusBadge label={pick(row, ["status"], "pending")} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => updateLeaveStatus(row, 'approved')} disabled={saving || String(row?.status || '').toLowerCase() === 'approved'}>
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        {tt(language, 'Approve', 'Approve')}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => updateLeaveStatus(row, 'rejected')} disabled={saving || String(row?.status || '').toLowerCase() === 'rejected'}>
-                        <XCircle className="mr-2 h-4 w-4" />
-                        {tt(language, 'Reject', 'Reject')}
-                      </Button>
+                      <SecondaryButton
+                        onClick={() => void updateLeaveStatus(row, "approved")}
+                        disabled={saving || String(row?.status || "").toLowerCase() === "approved"}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Approve
+                      </SecondaryButton>
+                      <SecondaryButton
+                        onClick={() => void updateLeaveStatus(row, "rejected")}
+                        disabled={saving || String(row?.status || "").toLowerCase() === "rejected"}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Reject
+                      </SecondaryButton>
                     </div>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Submit Leave Request', 'Leave Request Submit')}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input placeholder={tt(language, 'Employee ID', 'Employee ID')} value={leaveForm.employee_id} onChange={(e) => setLeaveForm({ ...leaveForm, employee_id: e.target.value })} />
-                <Input placeholder={tt(language, 'Leave Type', 'Leave Type')} value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} />
-                <Input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} />
-                <Input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} />
-                <textarea className="min-h-[120px] w-full rounded-md border p-3 text-sm" placeholder={tt(language, 'Reason', 'အကြောင်းပြချက်')} value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
-                <Button onClick={createLeaveRequest} disabled={saving}>
-                  <Save className="mr-2 h-4 w-4" />
-                  {tt(language, 'Create Request', 'Request တင်မည်')}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Document Compliance', 'Document Compliance')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {documents.slice(0, 8).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{safeText(pick(row, ['title', 'document_type'], 'HR Document'))}</div>
-                      <div className="text-sm text-muted-foreground">{safeText(pick(employees.find((employee: any) => String(employee.id) === String(row.employee_id)), ['full_name', 'name'], row.employee_id))}</div>
-                    </div>
-                    <Badge className={statusClass(pick(row, ['status'], 'uploaded'))}>{labelize(pick(row, ['status'], 'uploaded'))}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Disciplinary / Risk Review', 'Disciplinary / Risk Review')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {disciplinaryCases.slice(0, 8).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">{safeText(pick(employees.find((employee: any) => String(employee.id) === String(row.employee_id)), ['full_name', 'name'], row.employee_id))}</div>
-                        <div className="text-sm text-muted-foreground">{safeText(pick(row, ['case_type'], 'Case'))}</div>
-                      </div>
-                      <Badge className={statusClass(pick(row, ['status'], 'open'))}>{labelize(pick(row, ['status'], 'open'))}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <Panel title="Submit Leave Request">
+              <div className="space-y-3">
+                <TextInput placeholder="Employee ID" value={leaveForm.employee_id} onChange={(v) => setLeaveForm({ ...leaveForm, employee_id: v })} />
+                <TextInput placeholder="Leave Type" value={leaveForm.leave_type} onChange={(v) => setLeaveForm({ ...leaveForm, leave_type: v })} />
+                <TextInput type="date" value={leaveForm.start_date} onChange={(v) => setLeaveForm({ ...leaveForm, start_date: v })} />
+                <TextInput type="date" value={leaveForm.end_date} onChange={(v) => setLeaveForm({ ...leaveForm, end_date: v })} />
+                <textarea
+                  className="min-h-[120px] w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
+                  placeholder="Reason"
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                />
+                <ActionButton onClick={() => void createLeaveRequest()} disabled={saving}>
+                  <Save className="h-4 w-4" />
+                  Create Request
+                </ActionButton>
+              </div>
+            </Panel>
           </div>
         </div>
       )}
 
-      {view === 'admin' && (
+      {view === "admin" && (
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_420px]">
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Access Governance', 'Access Governance')}</CardTitle>
-                <CardDescription>{tt(language, 'Role bindings, branch scoping, and audit visibility.', 'role bindings၊ branch scoping နှင့် audit visibility')}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {users.slice(0, 8).map((row: any) => {
-                  const userBindings = roleBindings.filter((binding: any) => String(binding?.user_id || '') === String(row?.id || ''));
-                  const userRoleNames = userBindings.map((binding: any) => roleMap.get(binding.role_id)).filter(Boolean).map((role: any) => role.name);
+            <Panel
+              title="Access Governance"
+              subtitle="Role bindings, branch scoping, and audit visibility."
+            >
+              <div className="space-y-3">
+                {users.slice(0, 10).map((row: any) => {
+                  const userBindings = roleBindings.filter(
+                    (binding: any) => String(binding?.user_id || "") === String(row?.id || "")
+                  );
+                  const userRoleNames = userBindings
+                    .map((binding: any) => roleMap.get(String(binding.role_id)))
+                    .filter(Boolean)
+                    .map((role: any) => role.name);
+
                   return (
-                    <div key={row.id} className="rounded-xl border p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold">{safeText(pick(row, ['full_name', 'name', 'email'], 'User'))}</div>
-                          <div className="text-sm text-muted-foreground">{safeText(pick(row, ['email'], '—'))}</div>
-                        </div>
-                        <Badge className={statusClass(pick(row, ['active'], true) ? 'active' : 'inactive')}>{pick(row, ['active'], true) ? 'Active' : 'Inactive'}</Badge>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {userRoleNames.length ? userRoleNames.map((roleName: string) => <span key={roleName} className="rounded-full bg-muted px-2 py-1">{safeText(roleName)}</span>) : <span className="rounded-full bg-muted px-2 py-1">No role binding</span>}
-                      </div>
-                    </div>
+                    <InfoCard
+                      key={row.id}
+                      title={pick(row, ["full_name", "name", "email"], "User")}
+                      subtitle={pick(row, ["email"], "—")}
+                      meta={userRoleNames.length ? userRoleNames.join(", ") : "No role binding"}
+                      status={pick(row, ["status", "role"], "active")}
+                    />
                   );
                 })}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{tt(language, 'Broadcast Notice', 'Broadcast Notice')}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input placeholder={tt(language, 'Title', 'ခေါင်းစဉ်')} value={notificationForm.title} onChange={(e) => setNotificationForm({ ...notificationForm, title: e.target.value })} />
-                <Input placeholder={tt(language, 'Route', 'Route')} value={notificationForm.route} onChange={(e) => setNotificationForm({ ...notificationForm, route: e.target.value })} />
-                <Input placeholder={tt(language, 'Priority', 'Priority')} value={notificationForm.priority} onChange={(e) => setNotificationForm({ ...notificationForm, priority: e.target.value })} />
-                <textarea className="min-h-[120px] w-full rounded-md border p-3 text-sm" placeholder={tt(language, 'Message', 'မက်ဆေ့ချ်')} value={notificationForm.body} onChange={(e) => setNotificationForm({ ...notificationForm, body: e.target.value })} />
-                <Button onClick={createNotification} disabled={saving}>
-                  <BellRing className="mr-2 h-4 w-4" />
-                  {tt(language, 'Send Notice', 'Notice ပို့မည်')}
-                </Button>
-              </CardContent>
-            </Card>
+            <Panel title="Broadcast Notice">
+              <div className="space-y-3">
+                <TextInput placeholder="Title" value={notificationForm.title} onChange={(v) => setNotificationForm({ ...notificationForm, title: v })} />
+                <TextInput placeholder="Route" value={notificationForm.route} onChange={(v) => setNotificationForm({ ...notificationForm, route: v })} />
+                <TextInput placeholder="Priority" value={notificationForm.priority} onChange={(v) => setNotificationForm({ ...notificationForm, priority: v })} />
+                <textarea
+                  className="min-h-[120px] w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
+                  placeholder="Message"
+                  value={notificationForm.body}
+                  onChange={(e) => setNotificationForm({ ...notificationForm, body: e.target.value })}
+                />
+                <ActionButton onClick={() => void createNotification()} disabled={saving}>
+                  <BellRing className="h-4 w-4" />
+                  Send Notice
+                </ActionButton>
+              </div>
+            </Panel>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Branch Directory', 'Branch Directory')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
+            <Panel title="Branch Directory">
+              <div className="space-y-3">
                 {branches.map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                  <div key={row.id} className="rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
                     <div>
-                      <div className="font-semibold">{safeText(pick(row, ['name', 'code'], 'Branch'))}</div>
-                      <div className="text-sm text-muted-foreground">{addressText(pick(row, ['address'], `${pick(row, ['city'], '')}`))}</div>
+                      <div className="font-semibold text-slate-900">{pick(row, ["name", "code"], "Branch")}</div>
+                      <div className="text-sm text-slate-500">{pick(row, ["address", "city"], "")}</div>
                     </div>
-                    <Badge>{safeText(pick(row, ['code'], '—'))}</Badge>
+                    <StatusBadge label={pick(row, ["code"], "—")} />
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Audit Stream', 'Audit Stream')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
+            <Panel title="Audit Stream">
+              <div className="space-y-3">
                 {auditLogs.slice(0, 8).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4">
+                  <div key={row.id} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold">{safeText(pick(row, ['action'], 'activity'))}</div>
-                      <Badge>{safeText(pick(row, ['portal'], 'system'))}</Badge>
+                      <div className="font-semibold text-slate-900">{pick(row, ["action"], "activity")}</div>
+                      <StatusBadge label={pick(row, ["portal"], "system")} />
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">{safeText(pick(row, ['created_at'], ''))}</div>
+                    <div className="mt-1 text-sm text-slate-500">{pick(row, ["created_at"], "")}</div>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
           </div>
         </div>
       )}
 
-      {view === 'reports' && (
+      {view === "reports" && (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Total Employees', 'စုစုပေါင်းဝန်ထမ်း')}</div><div className="mt-2 text-4xl font-semibold">{report.totalEmployees}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Active', 'လုပ်ဆောင်နေ')}</div><div className="mt-2 text-4xl font-semibold">{report.activeEmployees}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Pending', 'စောင့်ဆိုင်း')}</div><div className="mt-2 text-4xl font-semibold">{report.pendingApprovals}</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Doc Coverage', 'Doc Coverage')}</div><div className="mt-2 text-4xl font-semibold">{report.documentCoverage}%</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Training Coverage', 'Training Coverage')}</div><div className="mt-2 text-4xl font-semibold">{report.trainingCoverage}%</div></CardContent></Card>
-            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Unread Notices', 'Unread Notices')}</div><div className="mt-2 text-4xl font-semibold">{report.unreadNotifications}</div></CardContent></Card>
+            <MetricCard title="Total Employees" value={report.totalEmployees} icon={<Users className="h-5 w-5" />} />
+            <MetricCard title="Active" value={report.activeEmployees} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <MetricCard title="Pending" value={report.pendingApprovals} icon={<ClipboardList className="h-5 w-5" />} />
+            <MetricCard title="Doc Coverage" value={`${report.documentCoverage}%`} icon={<FileText className="h-5 w-5" />} />
+            <MetricCard title="Training Coverage" value={`${report.trainingCoverage}%`} icon={<BookOpen className="h-5 w-5" />} />
+            <MetricCard title="Unread Notices" value={report.unreadNotifications} icon={<BellRing className="h-5 w-5" />} />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Training & Compliance', 'Training & Compliance')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {trainingRecords.slice(0, 10).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_420px]">
+            <Panel title="Branch Workforce Report">
+              <div className="space-y-3">
+                {branchSummary.map((row: any) => (
+                  <div key={row.id} className="rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
                     <div>
-                      <div className="font-semibold">{safeText(pick(row, ['training_name', 'title'], 'Training'))}</div>
-                      <div className="text-sm text-muted-foreground">{safeText(pick(employees.find((employee: any) => String(employee.id) === String(row.employee_id)), ['full_name', 'name'], row.employee_id))}</div>
+                      <div className="font-semibold text-slate-900">{row.name}</div>
+                      <div className="text-sm text-slate-500">{row.code}</div>
                     </div>
-                    <Badge className={statusClass(pick(row, ['status'], 'pending'))}>{labelize(pick(row, ['status'], 'pending'))}</Badge>
+                    <div className="text-right">
+                      <div className="font-semibold text-slate-900">{row.headcount}</div>
+                      <div className="text-sm text-slate-500">{row.pending} pending</div>
+                    </div>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </Panel>
 
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Asset & Exposure', 'Asset & Exposure')}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {assetAssignments.slice(0, 10).map((row: any) => (
-                  <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{safeText(pick(row, ['asset_code', 'asset_type'], 'Asset'))}</div>
-                      <div className="text-sm text-muted-foreground">{safeText(pick(employees.find((employee: any) => String(employee.id) === String(row.employee_id)), ['full_name', 'name'], row.employee_id))}</div>
-                    </div>
-                    <Badge className={statusClass(pick(row, ['status'], 'assigned'))}>{labelize(pick(row, ['status'], 'assigned'))}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-3">
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Payroll / Cost Placeholder', 'Payroll / Cost Placeholder')}</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div>{tt(language, 'Use this card for payroll summary, allowance totals, and branch labor cost rollups.', 'payroll summary, allowance totals, branch labor cost rollups အတွက်')}</div>
-                <div className="font-semibold text-foreground">{fmtCurrency(employeeStats.active * 350000)}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Security & Access', 'Security & Access')}</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center justify-between"><span>{tt(language, 'Role bindings', 'Role bindings')}</span><span className="font-semibold text-foreground">{roleBindings.length}</span></div>
-                <div className="flex items-center justify-between"><span>{tt(language, 'Audit events', 'Audit events')}</span><span className="font-semibold text-foreground">{auditLogs.length}</span></div>
-                <div className="flex items-center justify-between"><span>{tt(language, 'Active branches', 'Active branches')}</span><span className="font-semibold text-foreground">{branches.length}</span></div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle>{tt(language, 'Urgent Ops', 'Urgent Ops')}</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center justify-between"><span>{tt(language, 'Pending leave approvals', 'Pending leave approvals')}</span><span className="font-semibold text-foreground">{employeeStats.pendingApprovals}</span></div>
-                <div className="flex items-center justify-between"><span>{tt(language, 'Open disciplinary cases', 'Open disciplinary cases')}</span><span className="font-semibold text-foreground">{employeeStats.openCases}</span></div>
-                <div className="flex items-center justify-between"><span>{tt(language, 'Unread notices', 'Unread notices')}</span><span className="font-semibold text-foreground">{report.unreadNotifications}</span></div>
-              </CardContent>
-            </Card>
+            <Panel title="Admin Summary">
+              <div className="space-y-3">
+                <SummaryLine label="Profile" value={pick(profile, ["full_name", "name", "email"], "—")} />
+                <SummaryLine label="Branches" value={String(branches.length)} />
+                <SummaryLine label="Users" value={String(users.length)} />
+                <SummaryLine label="Roles" value={String(roles.length)} />
+                <SummaryLine label="Notifications" value={String(notifications.length)} />
+                <SummaryLine label="Audit Events" value={String(auditLogs.length)} />
+              </div>
+            </Panel>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function HeroCard({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 shadow-sm">
+            <ShieldCheck className="h-4 w-4 text-[#0d2c54]" />
+            <span className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+              Admin & HR
+            </span>
+          </div>
+          <h1 className="mt-4 text-3xl font-black tracking-tight text-[#0d2c54] md:text-5xl">
+            {title}
+          </h1>
+          <p className="mt-4 max-w-4xl text-sm font-medium leading-6 text-slate-500 md:text-[15px]">
+            {subtitle}
+          </p>
+        </div>
+        {actions}
+      </div>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[28px] border border-white/70 bg-white/80 p-6 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      <div className="mb-5 border-b border-slate-200/80 pb-5">
+        <div className="text-lg font-black tracking-tight text-[#0d2c54]">{title}</div>
+        {subtitle ? <div className="mt-2 text-sm text-slate-500">{subtitle}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+        active ? "bg-white shadow-sm text-[#0d2c54]" : "text-slate-600 hover:bg-white/60"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-2xl bg-[#0d2c54] px-4 py-3 text-xs font-black uppercase tracking-[0.16em] text-white disabled:opacity-70"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-70"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  icon,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/70 bg-white/80 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#0d2c54] shadow-inner">
+        {icon}
+      </div>
+      <div className="mt-5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+        {title}
+      </div>
+      <div className="mt-3 text-3xl font-black tracking-tight text-[#0d2c54]">{value}</div>
+    </div>
+  );
+}
+
+function StatusBadge({ label }: { label: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] ${statusClass(label)}`}>
+      {labelize(label)}
+    </span>
+  );
+}
+
+function InfoCard({
+  title,
+  subtitle,
+  meta,
+  status,
+  pills = [],
+}: {
+  title: string;
+  subtitle?: string;
+  meta?: string;
+  status?: string;
+  pills?: string[];
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-semibold text-slate-900">{title}</div>
+          {subtitle ? <div className="text-sm text-slate-500">{subtitle}</div> : null}
+          {meta ? <div className="text-sm text-slate-500">{meta}</div> : null}
+        </div>
+        {status ? <StatusBadge label={status} /> : null}
+      </div>
+      {pills.length ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+          {pills.map((pill) => (
+            <span key={pill} className="rounded-full bg-slate-100 px-2 py-1">
+              {pill}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
+    />
+  );
+}
+
+function SummaryLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+      <span className="font-semibold text-slate-500">{label}</span>
+      <span className="font-black text-[#0d2c54]">{value}</span>
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { Link, useLocation } from "react-router-dom";
 import type { ComponentType } from "react";
 import {
   LayoutDashboard,
+  UserCircle2,
+  Wallet,
   Package,
   Map,
   ShieldCheck,
@@ -13,6 +15,10 @@ import {
   FileText,
   BarChart3,
   Settings,
+  Briefcase,
+  ClipboardCheck,
+  BadgeCheck,
+  Building,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -25,6 +31,8 @@ type NavItem = {
 
 const coreNav: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, aliases: ["/"] },
+  { title: "Profile", url: "/profile", icon: UserCircle2 },
+  { title: "Wallet Hub", url: "/wallet", icon: Wallet },
   { title: "Create Delivery", url: "/create-delivery", icon: Package },
   { title: "Way Management", url: "/way-management", icon: Map },
 ];
@@ -35,23 +43,25 @@ const portalNav: NavItem[] = [
   { title: "Customer Service", url: "/customer-service", icon: Headset },
   { title: "Customer Portal", url: "/customer", icon: Users },
   { title: "Merchant Portal", url: "/merchant", icon: Building2, aliases: ["/merchants"] },
-  { title: "Admin & HR Portal", url: "/admin-hr", icon: Users, aliases: ["/admin/hr-admin", "/admin/operations"] },
+  { title: "Branch Office", url: "/branch-office", icon: Building },
+  { title: "Admin & HR Portal", url: "/admin-hr", icon: Users, aliases: ["/admin/hr-admin"] },
+  { title: "HR Employees", url: "/admin-hr/employees", icon: Briefcase },
+  { title: "HR Approvals", url: "/admin-hr/approvals", icon: ClipboardCheck },
+  { title: "Admin Controls", url: "/admin-hr/admin", icon: BadgeCheck, aliases: ["/admin/operations"] },
+  { title: "HR Reports", url: "/admin-hr/reports", icon: BarChart3 },
   { title: "Deliverymen", url: "/deliverymen", icon: Truck },
 ];
 
 const systemNav: NavItem[] = [
-  { title: "Waybill", url: "/waybill", icon: FileText },
+  { title: "Waybill", url: "/waybill", icon: FileText, aliases: ["/receipts"] },
   { title: "Reporting", url: "/reporting", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 function isItemActive(pathname: string, item: NavItem) {
   const candidates = [item.url, ...(item.aliases || [])];
-
   return candidates.some((candidate) => {
-    if (candidate === "/dashboard") {
-      return pathname === "/dashboard";
-    }
+    if (candidate === "/dashboard") return pathname === "/dashboard";
     return pathname === candidate || pathname.startsWith(`${candidate}/`);
   });
 }
