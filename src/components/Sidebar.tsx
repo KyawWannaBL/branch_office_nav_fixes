@@ -2,21 +2,19 @@ import { Link, useLocation } from "react-router-dom";
 import type { ComponentType } from "react";
 import {
   LayoutDashboard,
-  UserCircle2,
-  Wallet,
   Package,
   Map,
   ShieldCheck,
   Database,
   Headset,
   Building2,
-  Briefcase,
   Users,
   Truck,
   FileText,
   BarChart3,
   Settings,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type NavItem = {
   title: string;
@@ -26,9 +24,7 @@ type NavItem = {
 };
 
 const coreNav: NavItem[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, aliases: ["/dashboard"] },
-  { title: "Profile", url: "/profile", icon: UserCircle2 },
-  { title: "Wallet Hub", url: "/wallet", icon: Wallet },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, aliases: ["/"] },
   { title: "Create Delivery", url: "/create-delivery", icon: Package },
   { title: "Way Management", url: "/way-management", icon: Map },
 ];
@@ -37,26 +33,14 @@ const portalNav: NavItem[] = [
   { title: "Supervisor Control", url: "/supervisor", icon: ShieldCheck },
   { title: "Data Entry Portal", url: "/data-entry", icon: Database },
   { title: "Customer Service", url: "/customer-service", icon: Headset },
-  { title: "Branch Office", url: "/branch-office", icon: Building2 },
-  {
-    title: "Admin (Operations)",
-    url: "/admin-hr/admin",
-    icon: Briefcase,
-    aliases: ["/admin/operations"],
-  },
-  {
-    title: "Admin (HR & Admin)",
-    url: "/admin-hr",
-    icon: Users,
-    aliases: ["/admin/hr-admin"],
-  },
   { title: "Customer Portal", url: "/customer", icon: Users },
   { title: "Merchant Portal", url: "/merchant", icon: Building2, aliases: ["/merchants"] },
+  { title: "Admin & HR Portal", url: "/admin-hr", icon: Users, aliases: ["/admin/hr-admin", "/admin/operations"] },
   { title: "Deliverymen", url: "/deliverymen", icon: Truck },
 ];
 
 const systemNav: NavItem[] = [
-  { title: "Receipts", url: "/waybill", icon: FileText, aliases: ["/receipts"] },
+  { title: "Waybill", url: "/waybill", icon: FileText },
   { title: "Reporting", url: "/reporting", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -65,7 +49,9 @@ function isItemActive(pathname: string, item: NavItem) {
   const candidates = [item.url, ...(item.aliases || [])];
 
   return candidates.some((candidate) => {
-    if (candidate === "/") return pathname === "/" || pathname === "/dashboard";
+    if (candidate === "/dashboard") {
+      return pathname === "/dashboard";
+    }
     return pathname === candidate || pathname.startsWith(`${candidate}/`);
   });
 }
@@ -110,8 +96,32 @@ function SidebarSection({
   );
 }
 
+function getDisplayName(user: any) {
+  return (
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    "Unknown User"
+  );
+}
+
+function getRoleLabel(user: any) {
+  return (
+    user?.user_metadata?.roleCode ||
+    user?.user_metadata?.role_code ||
+    user?.user_metadata?.app_role ||
+    user?.user_metadata?.user_role ||
+    user?.user_metadata?.role ||
+    "USER"
+  );
+}
+
 export default function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const displayName = getDisplayName(user);
+  const roleLabel = getRoleLabel(user);
 
   return (
     <aside className="flex h-screen w-[264px] shrink-0 flex-col border-r border-white/10 bg-[linear-gradient(180deg,#061120_0%,#0A1830_100%)] text-white shadow-2xl">
@@ -135,9 +145,10 @@ export default function Sidebar() {
       <div className="border-t border-white/10 p-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
           Signed in as
-          <div className="mt-1 truncate font-bold text-white">Guest</div>
+          <div className="mt-1 truncate font-bold text-white">{displayName}</div>
+          <div className="mt-1 truncate text-[11px] text-slate-300">{user?.email || "-"}</div>
           <div className="mt-1 text-[10px] uppercase tracking-widest opacity-60">
-            Role: INT
+            Role: {String(roleLabel).toUpperCase()}
           </div>
         </div>
       </div>

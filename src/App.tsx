@@ -24,7 +24,7 @@ import CustomerPortal from "./pages/CustomerPortal";
 import Login from "./pages/Login";
 import AdminHrPortal from "./pages/AdminOperations";
 
-// Extra mounted pages
+// Extra pages
 import ProfileDashboard from "./pages/ProfileDashboard";
 import WalletHub from "./pages/WalletHub";
 import BranchOfficePage from "./pages/BranchOffice";
@@ -53,7 +53,7 @@ function PublicOnlyRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
 
   if (loading) return <FullScreenLoading />;
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   return children;
 }
@@ -74,8 +74,8 @@ function AppShell() {
             >
               <Routes>
                 {/* Core */}
-                <Route index element={<Dashboard />} />
-                <Route path="dashboard" element={<Navigate to="/" replace />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
                 <Route path="create-delivery" element={<CreateDelivery />} />
                 <Route path="way-management" element={<WayManagement />} />
 
@@ -111,7 +111,7 @@ function AppShell() {
                 <Route path="receipts" element={<Navigate to="/waybill" replace />} />
                 <Route path="receipts/*" element={<Navigate to="/waybill" replace />} />
 
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Suspense>
           </main>
@@ -129,6 +129,11 @@ export default function App() {
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public routes */}
+            <Route
+              path="/"
+              element={<Navigate to="/login" replace />}
+            />
             <Route
               path="/login"
               element={
@@ -138,11 +143,10 @@ export default function App() {
               }
             />
             <Route path="/Login" element={<Navigate to="/login" replace />} />
-
-            {/* Must stay public and NOT use PublicOnlyRoute */}
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password/" element={<Navigate to="/reset-password" replace />} />
 
+            {/* Protected app */}
             <Route
               path="/*"
               element={
