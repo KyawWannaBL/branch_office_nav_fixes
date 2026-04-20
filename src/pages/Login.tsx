@@ -71,28 +71,8 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    async function checkSession() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (active && user) {
-          navigate("/", { replace: true });
-        }
-      } finally {
-        if (active) setCheckingSession(false);
-      }
-    }
-
-    void checkSession();
-
-    return () => {
-      active = false;
-    };
-  }, [navigate]);
+  setCheckingSession(false);
+}, []);
 
   useEffect(() => {
     if (!rememberMe) {
@@ -135,7 +115,7 @@ export default function Login() {
       if (error) throw error;
 
       persistRememberedEmail(loginEmail);
-      navigate("/", { replace: true });
+     navigate("/dashboard", { replace: true });
     } catch (err: unknown) {
       setError(
         getErrorMessage(
@@ -214,7 +194,7 @@ export default function Login() {
       persistRememberedEmail(signupEmail);
 
       if (data.session) {
-        navigate("/", { replace: true });
+        navigate("/dashboard", { replace: true });
       } else {
         setSuccessMessage(
           bt(
