@@ -1,3 +1,4 @@
+cd "/d/britium_express (1)" && cat > src/pages/WalletHub.tsx <<'EOF'
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownLeft,
@@ -13,7 +14,6 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase/client";
 
 type View = "overview" | "transactions" | "accounts" | "settlements";
-type ToastTone = "ok" | "warn" | "err";
 
 type WalletAccountRow = {
   id: string;
@@ -34,6 +34,8 @@ type WalletTransactionRow = {
   channel: string;
   createdAt: string;
 };
+
+type ToastTone = "ok" | "warn" | "err";
 
 function Panel({
   title,
@@ -161,18 +163,27 @@ export default function WalletHub() {
       const [accountsRes, txRes] = await Promise.all([
         supabase
           .from("wallet_accounts")
-          .select("id, account_name, currency, balance, available_balance, pending_balance, updated_at")
+          .select(
+            "id, account_name, currency, balance, available_balance, pending_balance, updated_at"
+          )
           .order("updated_at", { ascending: false })
           .limit(50),
         supabase
           .from("wallet_transactions")
-          .select("id, reference_no, transaction_type, amount, status, channel, created_at")
+          .select(
+            "id, reference_no, transaction_type, amount, status, channel, created_at"
+          )
           .order("created_at", { ascending: false })
           .limit(100),
       ]);
 
-      if (accountsRes.error) throw new Error(`wallet_accounts: ${accountsRes.error.message}`);
-      if (txRes.error) throw new Error(`wallet_transactions: ${txRes.error.message}`);
+      if (accountsRes.error) {
+        throw new Error(`wallet_accounts: ${accountsRes.error.message}`);
+      }
+
+      if (txRes.error) {
+        throw new Error(`wallet_transactions: ${txRes.error.message}`);
+      }
 
       setAccounts(
         (accountsRes.data || []).map((row: any) => ({
@@ -198,13 +209,20 @@ export default function WalletHub() {
         }))
       );
 
-      setToast({ tone: "ok", message: "Wallet hub refreshed from Supabase." });
+      setToast({
+        tone: "ok",
+        message: "Wallet hub refreshed from Supabase.",
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load wallet data.";
+      const message =
+        error instanceof Error ? error.message : "Unable to load wallet data.";
       setLoadError(message);
       setAccounts([]);
       setTransactions([]);
-      setToast({ tone: "err", message: "Wallet hub could not load backend data." });
+      setToast({
+        tone: "err",
+        message: "Wallet hub could not load backend data.",
+      });
     } finally {
       setLoading(false);
     }
@@ -214,7 +232,10 @@ export default function WalletHub() {
     const q = query.trim().toLowerCase();
     if (!q) return transactions;
     return transactions.filter((row) =>
-      [row.referenceNo, row.type, row.status, row.channel].join(" ").toLowerCase().includes(q)
+      [row.referenceNo, row.type, row.status, row.channel]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
     );
   }, [transactions, query]);
 
@@ -226,7 +247,12 @@ export default function WalletHub() {
       .filter((row) => row.type.toLowerCase().includes("settlement"))
       .reduce((sum, row) => sum + Math.abs(Math.min(row.amount, 0)), 0);
 
-    return { totalBalance, totalAvailable, totalPending, settlementOut };
+    return {
+      totalBalance,
+      totalAvailable,
+      totalPending,
+      settlementOut,
+    };
   }, [accounts, transactions]);
 
   const settlementRows = useMemo(() => {
@@ -247,7 +273,7 @@ export default function WalletHub() {
             </div>
             <h1 className="mt-2 text-4xl font-black text-slate-950">Wallet Hub</h1>
             <p className="mt-3 max-w-4xl text-sm text-slate-700">
-              Live wallet balances, settlements, and transaction monitoring loaded from the backend only.
+              Live wallet balances, COD holdings, settlements, and transaction monitoring from the backend only.
             </p>
           </div>
 
@@ -271,10 +297,18 @@ export default function WalletHub() {
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <TabButton active={view === "overview"} onClick={() => setView("overview")}>Overview</TabButton>
-          <TabButton active={view === "transactions"} onClick={() => setView("transactions")}>Transactions</TabButton>
-          <TabButton active={view === "accounts"} onClick={() => setView("accounts")}>Accounts</TabButton>
-          <TabButton active={view === "settlements"} onClick={() => setView("settlements")}>Settlements</TabButton>
+          <TabButton active={view === "overview"} onClick={() => setView("overview")}>
+            Overview
+          </TabButton>
+          <TabButton active={view === "transactions"} onClick={() => setView("transactions")}>
+            Transactions
+          </TabButton>
+          <TabButton active={view === "accounts"} onClick={() => setView("accounts")}>
+            Accounts
+          </TabButton>
+          <TabButton active={view === "settlements"} onClick={() => setView("settlements")}>
+            Settlements
+          </TabButton>
         </div>
       </div>
 
@@ -301,38 +335,77 @@ export default function WalletHub() {
       {view === "overview" ? (
         <>
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard title="Total Wallet Balance" value={mmk(totals.totalBalance)} icon={<Wallet className="h-5 w-5 text-slate-600" />} />
-            <StatCard title="Available Balance" value={mmk(totals.totalAvailable)} icon={<CreditCard className="h-5 w-5 text-emerald-600" />} tone="good" />
-            <StatCard title="Pending Hold" value={mmk(totals.totalPending)} icon={<Landmark className="h-5 w-5 text-amber-600" />} tone="warn" />
-            <StatCard title="Settlement Outflow" value={mmk(totals.settlementOut)} icon={<Building2 className="h-5 w-5 text-slate-600" />} />
+            <StatCard
+              title="Total Wallet Balance"
+              value={mmk(totals.totalBalance)}
+              icon={<Wallet className="h-5 w-5 text-slate-600" />}
+            />
+            <StatCard
+              title="Available Balance"
+              value={mmk(totals.totalAvailable)}
+              icon={<CreditCard className="h-5 w-5 text-emerald-600" />}
+              tone="good"
+            />
+            <StatCard
+              title="Pending Hold"
+              value={mmk(totals.totalPending)}
+              icon={<Landmark className="h-5 w-5 text-amber-600" />}
+              tone="warn"
+            />
+            <StatCard
+              title="Settlement Outflow"
+              value={mmk(totals.settlementOut)}
+              icon={<Building2 className="h-5 w-5 text-slate-600" />}
+            />
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
-            <Panel title="Wallet Accounts" subtitle="Loaded from wallet_accounts.">
+            <Panel
+              title="Wallet Accounts"
+              subtitle="Loaded from wallet_accounts."
+            >
               {accounts.length === 0 ? (
-                <EmptyState title="No wallet accounts found" description="Create or sync wallet account records in Supabase to display balances here." />
+                <EmptyState
+                  title="No wallet accounts found"
+                  description="Create or sync wallet account records in Supabase to display balances here."
+                />
               ) : (
                 <div className="space-y-3">
                   {accounts.map((row) => (
-                    <div key={row.id} className="rounded-[24px] border border-black/10 bg-white/70 p-4">
+                    <div
+                      key={row.id}
+                      className="rounded-[24px] border border-black/10 bg-white/70 p-4"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="font-black text-slate-950">{row.accountName}</div>
                           <div className="mt-1 text-sm text-slate-600">{row.currency}</div>
                         </div>
                         <div className="text-right">
-                          <div className="text-xl font-black text-slate-950">{mmk(row.balance)}</div>
-                          <div className="mt-1 text-xs text-slate-500">Updated {row.updatedAt}</div>
+                          <div className="text-xl font-black text-slate-950">
+                            {mmk(row.balance)}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            Updated {row.updatedAt}
+                          </div>
                         </div>
                       </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className="rounded-2xl bg-white p-3">
-                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Available</div>
-                          <div className="mt-1 font-black text-emerald-700">{mmk(row.available)}</div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                            Available
+                          </div>
+                          <div className="mt-1 font-black text-emerald-700">
+                            {mmk(row.available)}
+                          </div>
                         </div>
                         <div className="rounded-2xl bg-white p-3">
-                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Pending</div>
-                          <div className="mt-1 font-black text-amber-700">{mmk(row.pending)}</div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                            Pending
+                          </div>
+                          <div className="mt-1 font-black text-amber-700">
+                            {mmk(row.pending)}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -341,13 +414,22 @@ export default function WalletHub() {
               )}
             </Panel>
 
-            <Panel title="Recent Wallet Activity" subtitle="Loaded from wallet_transactions.">
+            <Panel
+              title="Recent Wallet Activity"
+              subtitle="Loaded from wallet_transactions."
+            >
               {transactions.length === 0 ? (
-                <EmptyState title="No transactions found" description="Wallet movements will appear here after backend transactions are posted." />
+                <EmptyState
+                  title="No transactions found"
+                  description="Wallet movements will appear here after backend transactions are posted."
+                />
               ) : (
                 <div className="space-y-3">
                   {transactions.slice(0, 6).map((row) => (
-                    <div key={row.id} className="rounded-[24px] border border-black/10 bg-white/70 p-4">
+                    <div
+                      key={row.id}
+                      className="rounded-[24px] border border-black/10 bg-white/70 p-4"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-start gap-3">
                           <div className="rounded-2xl bg-white p-3">
@@ -360,11 +442,18 @@ export default function WalletHub() {
                           <div>
                             <div className="font-black text-slate-950">{row.type}</div>
                             <div className="mt-1 text-sm text-slate-600">{row.referenceNo}</div>
-                            <div className="mt-1 text-xs text-slate-500">{row.channel} · {row.createdAt}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {row.channel} · {row.createdAt}
+                            </div>
                           </div>
                         </div>
-                        <div className={`text-right text-xl font-black ${row.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                          {row.amount >= 0 ? "+" : "-"}{mmk(Math.abs(row.amount))}
+                        <div
+                          className={`text-right text-xl font-black ${
+                            row.amount >= 0 ? "text-emerald-700" : "text-rose-700"
+                          }`}
+                        >
+                          {row.amount >= 0 ? "+" : "-"}
+                          {mmk(Math.abs(row.amount))}
                         </div>
                       </div>
                     </div>
@@ -394,7 +483,10 @@ export default function WalletHub() {
             }
           >
             {filteredTransactions.length === 0 ? (
-              <EmptyState title="No matching transactions" description="No backend wallet transactions matched your current search." />
+              <EmptyState
+                title="No matching transactions"
+                description="No backend wallet transactions matched your current search."
+              />
             ) : (
               <div className="overflow-hidden rounded-2xl border border-black/10">
                 <table className="min-w-full text-sm">
@@ -411,15 +503,24 @@ export default function WalletHub() {
                   <tbody>
                     {filteredTransactions.map((row) => (
                       <tr key={row.id} className="border-t border-black/5 bg-white/50">
-                        <td className="px-4 py-3 font-semibold text-slate-950">{row.referenceNo}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-950">
+                          {row.referenceNo}
+                        </td>
                         <td className="px-4 py-3 text-slate-700">{row.type}</td>
                         <td className="px-4 py-3 text-slate-700">{row.channel}</td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700">{row.status}</span>
+                          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700">
+                            {row.status}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-slate-700">{row.createdAt}</td>
-                        <td className={`px-4 py-3 text-right font-black ${row.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                          {row.amount >= 0 ? "+" : "-"}{mmk(Math.abs(row.amount))}
+                        <td
+                          className={`px-4 py-3 text-right font-black ${
+                            row.amount >= 0 ? "text-emerald-700" : "text-rose-700"
+                          }`}
+                        >
+                          {row.amount >= 0 ? "+" : "-"}
+                          {mmk(Math.abs(row.amount))}
                         </td>
                       </tr>
                     ))}
@@ -433,33 +534,58 @@ export default function WalletHub() {
 
       {view === "accounts" ? (
         <div className="mt-6">
-          <Panel title="Wallet Accounts" subtitle="Treasury accounts, settlement accounts, and pending reserves.">
+          <Panel
+            title="Wallet Accounts"
+            subtitle="Treasury accounts, settlement accounts, and pending reserves."
+          >
             {accounts.length === 0 ? (
-              <EmptyState title="No wallet accounts available" description="The backend returned no wallet account records." />
+              <EmptyState
+                title="No wallet accounts available"
+                description="The backend returned no wallet account records."
+              />
             ) : (
               <div className="grid gap-4 xl:grid-cols-2">
                 {accounts.map((row) => (
-                  <div key={row.id} className="rounded-[28px] border border-black/10 bg-white/70 p-5">
+                  <div
+                    key={row.id}
+                    className="rounded-[28px] border border-black/10 bg-white/70 p-5"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{row.id}</div>
-                        <div className="mt-2 text-2xl font-black text-slate-950">{row.accountName}</div>
+                        <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                          {row.id}
+                        </div>
+                        <div className="mt-2 text-2xl font-black text-slate-950">
+                          {row.accountName}
+                        </div>
                       </div>
                       <Wallet className="h-6 w-6 text-slate-500" />
                     </div>
 
                     <div className="mt-5 grid gap-3 md:grid-cols-3">
                       <div className="rounded-2xl bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Total</div>
-                        <div className="mt-2 font-black text-slate-950">{mmk(row.balance)}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                          Total
+                        </div>
+                        <div className="mt-2 font-black text-slate-950">
+                          {mmk(row.balance)}
+                        </div>
                       </div>
                       <div className="rounded-2xl bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Available</div>
-                        <div className="mt-2 font-black text-emerald-700">{mmk(row.available)}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                          Available
+                        </div>
+                        <div className="mt-2 font-black text-emerald-700">
+                          {mmk(row.available)}
+                        </div>
                       </div>
                       <div className="rounded-2xl bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Pending</div>
-                        <div className="mt-2 font-black text-amber-700">{mmk(row.pending)}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                          Pending
+                        </div>
+                        <div className="mt-2 font-black text-amber-700">
+                          {mmk(row.pending)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -472,23 +598,41 @@ export default function WalletHub() {
 
       {view === "settlements" ? (
         <div className="mt-6">
-          <Panel title="Settlement Queue" subtitle="Current settlement-facing wallet transactions.">
+          <Panel
+            title="Settlement Queue"
+            subtitle="Current settlement-facing wallet transactions."
+          >
             {settlementRows.length === 0 ? (
-              <EmptyState title="No settlement records" description="No COD or settlement transactions were returned from the backend." />
+              <EmptyState
+                title="No settlement records"
+                description="No COD or settlement transactions were returned from the backend."
+              />
             ) : (
               <div className="space-y-3">
                 {settlementRows.map((row) => (
-                  <div key={row.id} className="rounded-[24px] border border-black/10 bg-white/70 p-4">
+                  <div
+                    key={row.id}
+                    className="rounded-[24px] border border-black/10 bg-white/70 p-4"
+                  >
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <div className="font-black text-slate-950">{row.referenceNo}</div>
                         <div className="mt-1 text-sm text-slate-700">{row.type}</div>
-                        <div className="mt-1 text-xs text-slate-500">{row.channel} · {row.createdAt}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {row.channel} · {row.createdAt}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700">{row.status}</span>
-                        <div className={`text-lg font-black ${row.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                          {row.amount >= 0 ? "+" : "-"}{mmk(Math.abs(row.amount))}
+                        <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700">
+                          {row.status}
+                        </span>
+                        <div
+                          className={`text-lg font-black ${
+                            row.amount >= 0 ? "text-emerald-700" : "text-rose-700"
+                          }`}
+                        >
+                          {row.amount >= 0 ? "+" : "-"}
+                          {mmk(Math.abs(row.amount))}
                         </div>
                       </div>
                     </div>
@@ -502,3 +646,4 @@ export default function WalletHub() {
     </div>
   );
 }
+EOF

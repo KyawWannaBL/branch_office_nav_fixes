@@ -1,256 +1,308 @@
-// @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { RefreshCw, Save } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useLanguage } from '@/hooks/useLanguage';
-import { getPortalBanner } from '@/lib/portalBanner';
-import { addressText, safeText } from '@/lib/displayValue';
-import { PortalBanner } from '@/components/portal/PortalBanner';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import React, { useMemo, useState } from "react";
+import {
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  Globe2,
+  MapPin,
+  Package2,
+  RefreshCw,
+  ShieldCheck,
+  Truck,
+  WalletCards,
+  AlertTriangle,
+} from "lucide-react";
 
-function tt(language: string, en: string, mm: string) {
-  return language === 'mm' ? mm : en;
+type Language = "en" | "my" | "both";
+
+type QueueRow = {
+  id: string;
+  awb: string;
+  customer: string;
+  township: string;
+  status: string;
+  assignee: string;
+};
+
+type CashRow = {
+  batch: string;
+  amount: string;
+  state: string;
+  updated: string;
+};
+
+function bi(language: Language, en: string, my: string) {
+  if (language === "en") return en;
+  if (language === "my") return my;
+  return `${en} / ${my}`;
 }
-function currentView(pathname: string) {
-  if (pathname.includes('/shipments')) return 'shipments';
-  if (pathname.includes('/team')) return 'team';
-  if (pathname.includes('/finance')) return 'finance';
-  return 'overview';
+
+function badgeClass(status: string) {
+  const token = status.toUpperCase();
+  if (["DELIVERED", "READY", "ACTIVE", "CLEARED"].includes(token)) return "bg-emerald-100 text-emerald-700";
+  if (["PENDING", "HOLD", "IN_TRANSIT", "QUEUE"].includes(token)) return "bg-amber-100 text-amber-700";
+  if (["FAILED", "ESCALATED", "BLOCKED"].includes(token)) return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-700";
 }
-function labelize(value: unknown) {
-  return String(value || 'unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function Surface({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
 }
-function fmtCurrency(value: unknown) {
-  const num = Number(value || 0);
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number.isFinite(num) ? num : 0)} MMK`;
+
+function SectionTitle({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">{eyebrow}</div>
+      <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900">{title}</h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{subtitle}</p>
+    </div>
+  );
+}
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  caption,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+  caption: string;
+}) {
+  return (
+    <Surface>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400">{label}</div>
+          <div className="mt-3 text-3xl font-black tracking-tight text-slate-900">{value}</div>
+          <div className="mt-2 text-sm text-slate-500">{caption}</div>
+        </div>
+        <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+          <Icon size={18} />
+        </div>
+      </div>
+    </Surface>
+  );
 }
 
 export default function BranchOfficePortal() {
-  const { language } = useLanguage();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [view, setView] = useState(currentView(location.pathname));
-  const [loading, setLoading] = useState(true);
-  const [branchRows, setBranchRows] = useState<any[]>([]);
-  const [staffRows, setStaffRows] = useState<any[]>([]);
-  const [shipmentRows, setShipmentRows] = useState<any[]>([]);
-  const [financeRows, setFinanceRows] = useState<any[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
-  const [financeForm, setFinanceForm] = useState({
-    entry_type: 'expense',
-    amount: '0',
-    entry_date: new Date().toISOString().slice(0, 10),
-    category: 'general',
-    notes: '',
-  });
+  const [language, setLanguage] = useState<Language>("both");
+  const [branchCode] = useState("BEX-YGN-HQ");
+  const [search, setSearch] = useState("");
 
-  useEffect(() => setView(currentView(location.pathname)), [location.pathname]);
+  const queueRows = useMemo<QueueRow[]>(
+    () => [
+      { id: "1", awb: "BEX-24041001", customer: "Ko Min Zaw", township: "Kamayut", status: "QUEUE", assignee: "Dispatch Desk A" },
+      { id: "2", awb: "BEX-24041002", customer: "Daw Hnin Ei", township: "Sanchaung", status: "IN_TRANSIT", assignee: "Rider R-21" },
+      { id: "3", awb: "BEX-24041003", customer: "Ko Thet Naing", township: "Hlaing", status: "HOLD", assignee: "Warehouse Gate 2" },
+      { id: "4", awb: "BEX-24041004", customer: "Ma Pwint", township: "Insein", status: "DELIVERED", assignee: "Rider R-18" },
+    ],
+    []
+  );
 
-  async function loadData() {
-    setLoading(true);
-    try {
-      const [bRes, sRes, shipRes, fRes] = await Promise.all([
-        supabase.from('branch_offices').select('*').order('branch_name', { ascending: true }),
-        supabase.from('staff_master').select('*').order('full_name', { ascending: true }),
-        supabase.from('shipments').select('*').order('created_at', { ascending: false }),
-        supabase.from('branch_office_finance_entries').select('*').order('entry_date', { ascending: false }),
-      ]);
-      if (bRes.error) throw bRes.error;
-      if (sRes.error) throw sRes.error;
-      if (shipRes.error) throw shipRes.error;
-      if (fRes.error) throw fRes.error;
-      setBranchRows(bRes.data || []);
-      setStaffRows(sRes.data || []);
-      setShipmentRows(shipRes.data || []);
-      setFinanceRows(fRes.data || []);
-      if (!selectedBranchId && bRes.data?.length) setSelectedBranchId(bRes.data[0].id);
-    } catch (e) {
-      console.error(e);
-      setBranchRows([]);
-      setStaffRows([]);
-      setShipmentRows([]);
-      setFinanceRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const cashRows = useMemo<CashRow[]>(
+    () => [
+      { batch: "COD-2026-04-10-A", amount: "2,450,000 MMK", state: "PENDING", updated: "10:20 AM" },
+      { batch: "COD-2026-04-10-B", amount: "1,180,000 MMK", state: "CLEARED", updated: "09:45 AM" },
+      { batch: "COD-2026-04-09-C", amount: "980,000 MMK", state: "CLEARED", updated: "Yesterday" },
+    ],
+    []
+  );
 
-  useEffect(() => { loadData(); }, []);
-
-  const selectedBranch = branchRows.find((r: any) => r.id === selectedBranchId) || null;
-
-  const teamRows = useMemo(() => {
-    if (!selectedBranch) return [];
-    return staffRows.filter((row: any) =>
-      row.branch_name === selectedBranch.branch_name ||
-      row.metadata?.branch_code === selectedBranch.branch_code
+  const filteredQueue = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return queueRows;
+    return queueRows.filter((row) =>
+      [row.awb, row.customer, row.township, row.status, row.assignee].join(" ").toLowerCase().includes(q)
     );
-  }, [staffRows, selectedBranch]);
-
-  const branchShipments = useMemo(() => {
-    if (!selectedBranch) return [];
-    return shipmentRows.filter((row: any) =>
-      row.branch_office_id === selectedBranch.id ||
-      row.current_location?.branch_code === selectedBranch.branch_code ||
-      row.current_location?.branch_name === selectedBranch.branch_name
-    );
-  }, [shipmentRows, selectedBranch]);
-
-  const branchFinance = useMemo(() => {
-    if (!selectedBranch) return [];
-    return financeRows.filter((row: any) => row.branch_office_id === selectedBranch.id);
-  }, [financeRows, selectedBranch]);
-
-  async function saveFinanceEntry() {
-    if (!selectedBranchId) return;
-    const { error } = await supabase.from('branch_office_finance_entries').insert({
-      branch_office_id: selectedBranchId,
-      entry_type: financeForm.entry_type,
-      amount: Number(financeForm.amount || 0),
-      entry_date: financeForm.entry_date,
-      category: financeForm.category,
-      notes: financeForm.notes || null,
-    });
-    if (error) throw error;
-    setFinanceForm({
-      entry_type: 'expense',
-      amount: '0',
-      entry_date: new Date().toISOString().slice(0, 10),
-      category: 'general',
-      notes: '',
-    });
-    await loadData();
-  }
-
-  const summary = useMemo(() => {
-    const income = branchFinance.filter((r: any) => r.entry_type === 'income').reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-    const expense = branchFinance.filter((r: any) => r.entry_type === 'expense').reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-    return { income, expense, balance: income - expense };
-  }, [branchFinance]);
+  }, [queueRows, search]);
 
   return (
     <div className="space-y-6">
-      <PortalBanner
-        image={getPortalBanner(view === 'shipments' ? 'branch_office_shipments' : view === 'team' ? 'branch_office_team' : view === 'finance' ? 'branch_office_finance' : 'branch_office')}
-        title={tt(language, 'Branch Office Portal', 'Branch Office Portal')}
-        subtitle={tt(language, 'Overview, shipments, team, and branch finance.', 'overview, shipment, team နှင့် branch finance')}
-      >
-        <div className="flex gap-3">
-          <select className="h-10 rounded-md border px-3 text-sm" value={selectedBranchId} onChange={(e) => setSelectedBranchId(e.target.value)}>
-            {branchRows.map((row: any) => <option key={row.id} value={row.id}>{row.branch_name}</option>)}
-          </select>
-          <Button variant="outline" onClick={loadData} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {tt(language, 'Refresh', 'ပြန်လည်ရယူမည်')}
-          </Button>
-        </div>
-      </PortalBanner>
+      <Surface className="overflow-hidden bg-[linear-gradient(135deg,#061120_0%,#0d2340_60%,#16345d_100%)] text-white shadow-[0_24px_70px_rgba(2,6,23,0.22)]">
+        <div className="grid gap-6 lg:grid-cols-[1.35fr_0.85fr]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-white/80">
+              <Building2 size={14} />
+              {bi(language, "Branch Office Portal", "Branch Office Portal / ရုံးခွဲပေါ်တယ်")}
+            </div>
+            <h1 className="mt-4 text-4xl font-black tracking-tight">
+              {bi(language, "Branch Operations Command", "ရုံးခွဲလုပ်ငန်းလည်ပတ်မှုထိန်းချုပ်စင်တာ")}
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75">
+              {bi(
+                language,
+                "Monitor dispatch queue, branch workload, warehouse coordination, COD follow-up, and customer-service escalations from one branch workspace.",
+                "Dispatch queue, ရုံးခွဲအလုပ်भार, warehouse coordination, COD follow-up နှင့် customer-service escalation များကို ရုံးခွဲတစ်နေရာတည်းမှ စီမံနိုင်သည်။"
+              )}
+            </p>
+          </div>
 
-      <div className="grid gap-2 rounded-2xl bg-muted p-1 md:grid-cols-4">
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'overview' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/branch-office/overview')}>{tt(language, 'Overview', 'Overview')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'shipments' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/branch-office/shipments')}>{tt(language, 'Shipments', 'Shipments')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'team' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/branch-office/team')}>{tt(language, 'Team', 'Team')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'finance' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/branch-office/finance')}>{tt(language, 'Finance', 'Finance')}</button>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-[24px] border border-white/10 bg-white/10 p-5">
+              <div className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
+                {bi(language, "Branch Code", "ရုံးခွဲကုဒ်")}
+              </div>
+              <div className="mt-3 text-2xl font-black">{branchCode}</div>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-white/10 p-5">
+              <div className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
+                {bi(language, "Queue Health", "Queue အခြေအနေ")}
+              </div>
+              <div className="mt-3 text-2xl font-black">Stable</div>
+            </div>
+          </div>
+        </div>
+      </Surface>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
+            <Globe2 size={14} />
+            <span>Language</span>
+          </div>
+          {[
+            { value: "en", label: "EN" },
+            { value: "my", label: "မြန်မာ" },
+            { value: "both", label: "EN + မြန်မာ" },
+          ].map((item) => {
+            const active = item.value === language;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setLanguage(item.value as Language)}
+                className={[
+                  "rounded-xl px-3 py-2 text-sm font-semibold transition",
+                  active ? "bg-[#0d2c54] text-white shadow" : "bg-slate-50 text-slate-600 hover:bg-slate-100",
+                ].join(" ")}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <button className="inline-flex items-center gap-2 rounded-2xl bg-[#0d2c54] px-5 py-3 text-sm font-black text-white">
+          <RefreshCw size={16} />
+          {bi(language, "Refresh Branch Data", "ရုံးခွဲဒေတာ ပြန်ရယူမည်")}
+        </button>
       </div>
 
-      {view === 'overview' && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Branch', 'Branch')}</div><div className="mt-2 text-2xl font-semibold">{safeText(selectedBranch?.branch_name)}</div></CardContent></Card>
-          <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Shipments', 'Shipments')}</div><div className="mt-2 text-4xl font-semibold">{branchShipments.length}</div></CardContent></Card>
-          <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Team', 'Team')}</div><div className="mt-2 text-4xl font-semibold">{teamRows.length}</div></CardContent></Card>
-          <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Balance', 'Balance')}</div><div className="mt-2 text-4xl font-semibold">{fmtCurrency(summary.balance)}</div></CardContent></Card>
-        </div>
-      )}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard icon={Package2} label={bi(language, "Queued Shipments", "စောင့်ဆိုင်းနေသော shipment များ")} value="126" caption={bi(language, "Waiting for dispatch or branch action", "Dispatch သို့မဟုတ် branch action စောင့်နေသည်")} />
+        <KpiCard icon={Truck} label={bi(language, "Live Riders", "လက်ရှိ rider များ")} value="18" caption={bi(language, "Active delivery assignments", "လက်ရှိ delivery assignment များ")} />
+        <KpiCard icon={WalletCards} label={bi(language, "COD Pending", "စောင့်ဆိုင်းနေသော COD")} value="3,630,000 MMK" caption={bi(language, "Uncleared branch COD batches", "မရှင်းလင်းရသေးသော COD batch များ")} />
+        <KpiCard icon={AlertTriangle} label={bi(language, "Escalations", "တင်ပြထားသော ပြဿနာများ")} value="7" caption={bi(language, "Require supervisor or HQ review", "Supervisor သို့မဟုတ် HQ review လိုအပ်သည်")} />
+      </div>
 
-      {view === 'shipments' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{tt(language, 'Branch Shipments', 'Branch Shipments')}</CardTitle>
-            <CardDescription>{safeText(selectedBranch?.branch_name)}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {branchShipments.map((row: any) => (
-              <div key={row.id} className="rounded-xl border p-4 flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold">{safeText(row.awb)}</div>
-                  <div className="text-sm text-muted-foreground">{safeText(row.recipient?.name)} · {safeText(row.recipient?.phone)}</div>
-                  <div className="text-sm text-muted-foreground">{addressText(row.recipient?.address)}</div>
-                </div>
-                <Badge>{labelize(row.status)}</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <Surface>
+          <SectionTitle eyebrow={bi(language, "Dispatch Queue", "Dispatch Queue")} title={bi(language, "Branch shipment queue", "ရုံးခွဲ shipment queue")} subtitle={bi(language, "Search and review the current branch-level dispatch and warehouse queue.", "လက်ရှိ branch-level dispatch နှင့် warehouse queue ကို ရှာဖွေကြည့်ရှုနိုင်သည်။")} />
+          <div className="relative mb-5">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={bi(language, "Search AWB, customer, township, status", "AWB၊ customer၊ township၊ status ဖြင့်ရှာရန်")}
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-700 outline-none"
+            />
+          </div>
 
-      {view === 'team' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{tt(language, 'Branch Team', 'Branch Team')}</CardTitle>
-            <CardDescription>{safeText(selectedBranch?.branch_name)}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {teamRows.map((row: any) => (
-              <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold">{row.full_name}</div>
-                  <div className="text-sm text-muted-foreground">{safeText(row.staff_type)} · {safeText(row.role_name)}</div>
-                </div>
-                <Badge>{row.is_active ? tt(language, 'Active', 'Active') : tt(language, 'Inactive', 'Inactive')}</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+          <div className="overflow-hidden rounded-[24px] border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    {[bi(language, "AWB", "AWB"), bi(language, "Customer", "ဖောက်သည်"), bi(language, "Township", "မြို့နယ်"), bi(language, "Status", "အခြေအနေ"), bi(language, "Assignee", "တာဝန်ခံ")].map((header) => (
+                      <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredQueue.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-bold text-slate-900">{row.awb}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.customer}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.township}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${badgeClass(row.status)}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{row.assignee}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Surface>
 
-      {view === 'finance' && (
-        <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card>
-            <CardHeader><CardTitle>{tt(language, 'Add Finance Entry', 'Finance Entry ထည့်ရန်')}</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <select className="h-10 w-full rounded-md border px-3 text-sm" value={financeForm.entry_type} onChange={(e) => setFinanceForm({ ...financeForm, entry_type: e.target.value })}>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-              </select>
-              <Input placeholder={tt(language, 'Amount', 'ပမာဏ')} value={financeForm.amount} onChange={(e) => setFinanceForm({ ...financeForm, amount: e.target.value })} />
-              <Input type="date" value={financeForm.entry_date} onChange={(e) => setFinanceForm({ ...financeForm, entry_date: e.target.value })} />
-              <Input placeholder={tt(language, 'Category', 'အမျိုးအစား')} value={financeForm.category} onChange={(e) => setFinanceForm({ ...financeForm, category: e.target.value })} />
-              <textarea className="min-h-[100px] w-full rounded-md border p-3 text-sm" value={financeForm.notes} onChange={(e) => setFinanceForm({ ...financeForm, notes: e.target.value })} placeholder={tt(language, 'Notes', 'မှတ်ချက်')} />
-              <Button onClick={saveFinanceEntry}>
-                <Save className="mr-2 h-4 w-4" />
-                {tt(language, 'Save Entry', 'Entry သိမ်းမည်')}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>{tt(language, 'Branch Finance Ledger', 'Branch Finance Ledger')}</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">{tt(language, 'Income', 'Income')}</div><div className="mt-2 text-2xl font-semibold">{fmtCurrency(summary.income)}</div></div>
-                <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">{tt(language, 'Expense', 'Expense')}</div><div className="mt-2 text-2xl font-semibold">{fmtCurrency(summary.expense)}</div></div>
-                <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">{tt(language, 'Balance', 'Balance')}</div><div className="mt-2 text-2xl font-semibold">{fmtCurrency(summary.balance)}</div></div>
-              </div>
-              {branchFinance.map((row: any) => (
-                <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{safeText(row.category)}</div>
-                    <div className="text-sm text-muted-foreground">{row.entry_date} · {safeText(row.notes)}</div>
+        <div className="space-y-6">
+          <Surface>
+            <SectionTitle eyebrow={bi(language, "COD Batches", "COD Batches")} title={bi(language, "Branch settlement follow-up", "ရုံးခွဲ COD settlement follow-up")} subtitle={bi(language, "Monitor branch cash batches and pending settlement states.", "ရုံးခွဲ cash batch များနှင့် စာရင်းရှင်းလင်းမှုအခြေအနေကို စောင့်ကြည့်နိုင်သည်။")} />
+            <div className="space-y-3">
+              {cashRows.map((row) => (
+                <div key={row.batch} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-black text-slate-900">{row.batch}</div>
+                      <div className="mt-1 text-sm text-slate-500">{row.updated}</div>
+                    </div>
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${badgeClass(row.state)}`}>
+                      {row.state}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <div className="font-semibold">{fmtCurrency(row.amount)}</div>
-                    <div className="text-sm text-muted-foreground">{labelize(row.entry_type)}</div>
+                  <div className="mt-3 text-lg font-black text-[#0d2c54]">{row.amount}</div>
+                </div>
+              ))}
+            </div>
+          </Surface>
+
+          <Surface>
+            <SectionTitle eyebrow={bi(language, "Branch Actions", "Branch Actions")} title={bi(language, "Operational shortcuts", "လုပ်ငန်းဆိုင်ရာ shortcut များ")} subtitle={bi(language, "Quick branch tools for queue review, handoff, and exception handling.", "Queue review, handoff နှင့် exception handling အတွက် ရုံးခွဲ shortcut များ။")} />
+            <div className="grid gap-3 md:grid-cols-2">
+              {[
+                [CalendarClock, bi(language, "Pickup Queue", "Pickup Queue")],
+                [MapPin, bi(language, "Delivery Zone Board", "Delivery Zone Board")],
+                [Clock3, bi(language, "Pending Exceptions", "စောင့်ဆိုင်းနေသော exception များ")],
+                [ShieldCheck, bi(language, "Supervisor Escalation", "Supervisor escalation")],
+              ].map(([Icon, label]) => (
+                <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm">
+                      {React.createElement(Icon as React.ComponentType<{ size?: number }>, { size: 16 })}
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">{label as string}</div>
                   </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </Surface>
         </div>
-      )}
+      </div>
     </div>
   );
 }

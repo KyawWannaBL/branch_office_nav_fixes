@@ -1,18 +1,18 @@
 import React, { useMemo, useState } from "react";
 import {
-  AlertCircle,
-  ArrowRightLeft,
-  Bike,
-  CheckCircle2,
-  DollarSign,
-  Download,
-  FileText,
-  Lock,
-  MapPin,
   Package,
-  Search,
-  ShieldAlert,
   Truck,
+  Bike,
+  DollarSign,
+  ArrowRightLeft,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  MapPin,
+  Search,
+  Download,
+  ShieldAlert,
 } from "lucide-react";
 
 type View = "dashboard" | "inbound_outbound" | "local_dispatch" | "financials";
@@ -84,7 +84,7 @@ function Panel({
 }) {
   return (
     <div className="rounded-[32px] border border-black/10 bg-white/60 p-6 shadow-sm backdrop-blur-md">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-black text-slate-900">{title}</h2>
         {action}
       </div>
@@ -117,7 +117,7 @@ function TabButton({
   );
 }
 
-export default function BranchOffice() {
+export default function BranchOfficePage() {
   const [view, setView] = useState<View>("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -131,9 +131,12 @@ export default function BranchOffice() {
   }, []);
 
   const displayParcels = useMemo(() => {
-    if (!searchQuery) return PARCEL_SEED;
+    if (!searchQuery.trim()) return PARCEL_SEED;
     return PARCEL_SEED.filter((p) =>
-      [p.tracking, p.recipient, p.township].join(" ").toLowerCase().includes(searchQuery.toLowerCase())
+      [p.tracking, p.recipient, p.township, p.address]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
@@ -146,12 +149,16 @@ export default function BranchOffice() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-slate-500">
-              <MapPin className="h-4 w-4" /> Ahlone Branch Office
+              <MapPin className="h-4 w-4" />
+              Ahlone Branch Office
             </div>
             <h1 className="mt-2 text-4xl font-black text-slate-950">Branch Operations</h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-700">
-              Manage inbound hub transfers, local dispatch assignments, and daily financial reporting.
-              <strong className="ml-1 text-rose-600">Financial submissions are final and immutable.</strong>
+              Manage inbound hub transfers, optimize local dispatch assignments, and securely submit daily
+              financial reports.
+              <strong className="ml-1 text-rose-600">
+                Note: All financial submissions are final and immutable.
+              </strong>
             </p>
           </div>
 
@@ -162,21 +169,49 @@ export default function BranchOffice() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card title="At Branch" value={String(stats.atBranch)} icon={<Package className="h-5 w-5 text-emerald-600" />} subtitle="Pending sorting or dispatch" />
-          <Card title="Inbound Transfer" value={String(stats.inTransit)} icon={<ArrowRightLeft className="h-5 w-5 text-amber-600" />} subtitle="Arriving from Main Hub" />
-          <Card title="Out for Delivery" value={String(stats.outForDelivery)} icon={<Truck className="h-5 w-5 text-blue-600" />} subtitle="Currently with local fleet" />
-          <Card title="Pending COD" value={`${stats.totalCOD.toLocaleString()} Ks`} icon={<DollarSign className="h-5 w-5 text-emerald-600" />} subtitle="Unremitted local collection" />
+          <Card
+            title="At Branch"
+            value={String(stats.atBranch)}
+            icon={<Package className="h-5 w-5 text-emerald-600" />}
+            subtitle="Pending sorting or dispatch"
+          />
+          <Card
+            title="Inbound Transfer"
+            value={String(stats.inTransit)}
+            icon={<ArrowRightLeft className="h-5 w-5 text-amber-600" />}
+            subtitle="Arriving from Main Hub"
+          />
+          <Card
+            title="Out for Delivery"
+            value={String(stats.outForDelivery)}
+            icon={<Truck className="h-5 w-5 text-blue-600" />}
+            subtitle="Currently with local fleet"
+          />
+          <Card
+            title="Pending COD"
+            value={`${stats.totalCOD.toLocaleString()} Ks`}
+            icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
+            subtitle="Unremitted local collection"
+          />
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <TabButton active={view === "dashboard"} onClick={() => setView("dashboard")}>Overview</TabButton>
-          <TabButton active={view === "inbound_outbound"} onClick={() => setView("inbound_outbound")}>Inbound / Outbound</TabButton>
-          <TabButton active={view === "local_dispatch"} onClick={() => setView("local_dispatch")}>Local Dispatch</TabButton>
-          <TabButton active={view === "financials"} onClick={() => setView("financials")}>Financials</TabButton>
+          <TabButton active={view === "dashboard"} onClick={() => setView("dashboard")}>
+            Overview
+          </TabButton>
+          <TabButton active={view === "inbound_outbound"} onClick={() => setView("inbound_outbound")}>
+            Inbound / Outbound
+          </TabButton>
+          <TabButton active={view === "local_dispatch"} onClick={() => setView("local_dispatch")}>
+            Local Dispatch
+          </TabButton>
+          <TabButton active={view === "financials"} onClick={() => setView("financials")}>
+            Financials (Locked)
+          </TabButton>
         </div>
       </div>
 
-      {view === "dashboard" ? (
+      {view === "dashboard" && (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
           <Panel title="Recent Activities">
             <div className="space-y-3">
@@ -184,23 +219,31 @@ export default function BranchOffice() {
                 <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" />
                 <div>
                   <div className="font-bold text-slate-900">Hub Transfer Received</div>
-                  <div className="text-sm text-slate-600">Manifest #TRX-9982 verified and scanned into branch inventory.</div>
+                  <div className="text-sm text-slate-600">
+                    Manifest #TRX-9982 (45 parcels) verified and scanned into branch inventory.
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">10 mins ago by Branch Admin</div>
                 </div>
               </div>
+
               <div className="flex items-start gap-3 rounded-2xl bg-white/70 p-4">
                 <Truck className="mt-0.5 h-5 w-5 text-blue-600" />
                 <div>
                   <div className="font-bold text-slate-900">Van Fleet Dispatched</div>
-                  <div className="text-sm text-slate-600">Driver Ko Min departed for Hlaing / Insein route.</div>
+                  <div className="text-sm text-slate-600">
+                    Driver Ko Min departed for Hlaing / Insein route (18 parcels).
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">1 hour ago</div>
                 </div>
               </div>
+
               <div className="flex items-start gap-3 rounded-2xl bg-white/70 p-4">
                 <Lock className="mt-0.5 h-5 w-5 text-slate-600" />
                 <div>
                   <div className="font-bold text-slate-900">Financial Submission Locked</div>
-                  <div className="text-sm text-slate-600">Yesterday's revenue and COD remittance were submitted to HQ.</div>
+                  <div className="text-sm text-slate-600">
+                    Yesterday&apos;s walk-in revenue and COD remittance successfully submitted to HQ.
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">Yesterday at 18:30</div>
                 </div>
               </div>
@@ -214,14 +257,15 @@ export default function BranchOffice() {
                 Heavy Traffic Alert (Downtown)
               </div>
               <p className="mt-2 text-sm text-amber-800">
-                Due to roadworks on Anawrahta Rd, use bicycle fleet for Latha and Lanmadaw deliveries today. Route vans to outer townships.
+                Due to roadworks on Anawrahta Rd, strictly utilize bicycle fleet for Latha and
+                Lanmadaw deliveries today. Route vans exclusively to outer townships.
               </p>
             </div>
           </Panel>
         </div>
-      ) : null}
+      )}
 
-      {view === "inbound_outbound" ? (
+      {view === "inbound_outbound" && (
         <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_300px]">
           <Panel title="Inventory Scanner">
             <div className="relative mb-6">
@@ -231,6 +275,7 @@ export default function BranchOffice() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Scan or type tracking number..."
                 className="w-full rounded-2xl border border-black/10 bg-white/75 py-3 pl-11 pr-4 text-sm font-mono text-slate-900 outline-none focus:border-[#05080F]"
+                autoFocus
               />
             </div>
 
@@ -249,7 +294,9 @@ export default function BranchOffice() {
                     .filter((p) => ["In Transit to Branch", "At Branch"].includes(p.status))
                     .map((parcel) => (
                       <tr key={parcel.id} className="hover:bg-white/40">
-                        <td className="py-3 pl-2 font-mono font-bold text-slate-900">{parcel.tracking}</td>
+                        <td className="py-3 pl-2 font-mono font-bold text-slate-900">
+                          {parcel.tracking}
+                        </td>
                         <td className="py-3 text-slate-700">{parcel.township}</td>
                         <td className="py-3">
                           <span
@@ -286,6 +333,7 @@ export default function BranchOffice() {
                 Receive Manifest
                 <ArrowRightLeft className="h-4 w-4" />
               </button>
+
               <button className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
                 Return to Hub
                 <Truck className="h-4 w-4" />
@@ -293,38 +341,58 @@ export default function BranchOffice() {
             </div>
           </Panel>
         </div>
-      ) : null}
+      )}
 
-      {view === "local_dispatch" ? (
+      {view === "local_dispatch" && (
         <div className="mt-6">
           <Panel title="Smart Local Dispatch (Ahlone Context)">
             <p className="mb-4 text-sm text-slate-600">
-              Assign parcels to the local fleet. Bicycle is recommended for congested downtown routes and vans for outer townships.
+              Assign parcels to the local fleet. System logic automatically recommends bicycles
+              for congested downtown routes and vans for outer townships.
             </p>
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {PARCEL_SEED.filter((p) => p.status === "At Branch").map((parcel) => {
                 const downtown = isDowntown(parcel.township);
+
                 return (
-                  <div key={parcel.id} className="flex flex-col justify-between rounded-2xl border border-black/10 bg-white/70 p-4">
+                  <div
+                    key={parcel.id}
+                    className="flex flex-col justify-between rounded-2xl border border-black/10 bg-white/70 p-4"
+                  >
                     <div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm font-black text-slate-900">{parcel.tracking}</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-sm font-black text-slate-900">
+                          {parcel.tracking}
+                        </span>
+
                         {downtown ? (
                           <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-800">
-                            <Bike className="h-3 w-3" /> Bike
+                            <Bike className="h-3 w-3" />
+                            Bike
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black uppercase text-blue-800">
-                            <Truck className="h-3 w-3" /> Van
+                            <Truck className="h-3 w-3" />
+                            Van
                           </span>
                         )}
                       </div>
-                      <div className="mt-2 text-sm font-bold text-slate-700">{parcel.recipient}</div>
-                      <div className="text-xs text-slate-500">{parcel.address}, {parcel.township}</div>
+
+                      <div className="mt-2 text-sm font-bold text-slate-700">
+                        {parcel.recipient}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {parcel.address}, {parcel.township}
+                      </div>
+
                       {parcel.codAmount > 0 ? (
-                        <div className="mt-2 text-xs font-bold text-rose-600">COD: {parcel.codAmount.toLocaleString()} Ks</div>
+                        <div className="mt-2 text-xs font-bold text-rose-600">
+                          COD: {parcel.codAmount.toLocaleString()} Ks
+                        </div>
                       ) : null}
                     </div>
+
                     <div className="mt-4 border-t border-black/5 pt-3">
                       <select className="w-full rounded-xl border border-black/10 bg-white/50 px-3 py-2 text-xs font-bold text-slate-700 outline-none">
                         <option value="">Assign Deliveryman...</option>
@@ -347,15 +415,17 @@ export default function BranchOffice() {
             </div>
           </Panel>
         </div>
-      ) : null}
+      )}
 
-      {view === "financials" ? (
+      {view === "financials" && (
         <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_400px]">
           <Panel title="Branch Financial Ledger (Read-Only)">
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               <ShieldAlert className="h-5 w-5 shrink-0" />
               <div>
-                <strong>Strict Compliance Rule:</strong> Financial records are permanently locked upon submission. Branch Managers cannot edit or delete historical data.
+                <strong>Strict Compliance Rule:</strong> Financial records are permanently locked
+                upon submission. Branch Managers cannot edit or delete historical data. Contact
+                Central Operations Admin for adjustments.
               </div>
             </div>
 
@@ -376,10 +446,13 @@ export default function BranchOffice() {
                       <td className="py-3 pl-2 text-slate-700">{record.date}</td>
                       <td className="py-3 font-bold text-slate-900">{record.type}</td>
                       <td className="py-3 text-slate-600">{record.description}</td>
-                      <td className="py-3 text-right font-mono font-bold text-slate-900">{record.amount.toLocaleString()}</td>
+                      <td className="py-3 text-right font-mono font-bold text-slate-900">
+                        {record.amount.toLocaleString()}
+                      </td>
                       <td className="py-3 pr-2 text-right">
                         <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-1 text-[10px] font-black uppercase text-slate-600">
-                          <Lock className="h-3 w-3" /> Locked
+                          <Lock className="h-3 w-3" />
+                          Locked
                         </span>
                       </td>
                     </tr>
@@ -392,30 +465,49 @@ export default function BranchOffice() {
           <Panel title="Submit Daily Report">
             <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Record Type</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700">
+                  Record Type
+                </label>
                 <select className="w-full rounded-xl border border-black/10 bg-white/75 px-4 py-3 text-sm outline-none">
                   <option>COD Collection Remittance</option>
                   <option>Walk-in Counter Revenue</option>
                   <option>Branch Petty Cash Expense</option>
                 </select>
               </div>
+
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Amount (MMK)</label>
-                <input type="number" placeholder="0" className="w-full rounded-xl border border-black/10 bg-white/75 px-4 py-3 text-sm outline-none" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Description / Reference</label>
-                <textarea rows={3} placeholder="Provide details..." className="w-full resize-none rounded-xl border border-black/10 bg-white/75 px-4 py-3 text-sm outline-none"></textarea>
+                <label className="mb-1 block text-xs font-bold text-slate-700">
+                  Amount (MMK)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  className="w-full rounded-xl border border-black/10 bg-white/75 px-4 py-3 text-sm outline-none"
+                />
               </div>
 
-              <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#05080F] px-4 py-3 text-sm font-black uppercase tracking-widest text-white hover:bg-slate-800">
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">
+                  Description / Reference
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Provide details..."
+                  className="w-full resize-none rounded-xl border border-black/10 bg-white/75 px-4 py-3 text-sm outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#05080F] px-4 py-3 text-sm font-black uppercase tracking-widest text-white hover:bg-slate-800"
+              >
                 <FileText className="h-4 w-4" />
                 Submit & Lock Record
               </button>
             </form>
           </Panel>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
