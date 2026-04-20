@@ -183,21 +183,26 @@ export default function Dashboard() {
   ];
 
   const deliveryTrendData =
-    deliveries.length > 0
-      ? deliveries.slice(0, 7).map((delivery, index) => ({
-          date: `D${index + 1}`,
-          deliveries: index + 1,
-          completed: delivery.status === DeliveryStatus.DELIVERED ? index + 1 : index,
-        }))
-      : [
-          { date: 'Mon', deliveries: 0, completed: 0 },
-          { date: 'Tue', deliveries: 0, completed: 0 },
-          { date: 'Wed', deliveries: 0, completed: 0 },
-          { date: 'Thu', deliveries: 0, completed: 0 },
-          { date: 'Fri', deliveries: 0, completed: 0 },
-          { date: 'Sat', deliveries: 0, completed: 0 },
-          { date: 'Sun', deliveries: 0, completed: 0 },
-        ];
+  deliveries.length > 0
+    ? deliveries.slice(0, 7).map((delivery, index) => ({
+        date:
+          delivery.createdAt ||
+          new Date(Date.now() - (6 - index) * 24 * 60 * 60 * 1000).toISOString(),
+        deliveries: index + 1,
+        completed: delivery.status === DeliveryStatus.DELIVERED ? index + 1 : index,
+        failed:
+          delivery.status === DeliveryStatus.FAILED ||
+          delivery.status === DeliveryStatus.RETURNED ||
+          delivery.status === DeliveryStatus.CANCELLED
+            ? 1
+            : 0,
+      }))
+    : Array.from({ length: 7 }, (_, index) => ({
+        date: new Date(Date.now() - (6 - index) * 24 * 60 * 60 * 1000).toISOString(),
+        deliveries: 0,
+        completed: 0,
+        failed: 0,
+      }));
 
   const revenueData =
     receipts.length > 0
