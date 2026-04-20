@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { Sidebar } from "./components/Sidebar";
+import Sidebar from "./components/Sidebar";
 
 // Page Imports
 import Dashboard from "./pages/Dashboard";
