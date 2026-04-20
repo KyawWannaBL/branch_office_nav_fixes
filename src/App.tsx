@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/AuthContext";
 import Sidebar from "./components/Sidebar";
 
 // Page Imports
@@ -23,6 +24,32 @@ import CustomerPortal from "./pages/CustomerPortal";
 import Login from "./pages/Login";
 
 const queryClient = new QueryClient();
+
+function FullScreenLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      Loading Britium Express...
+    </div>
+  );
+}
+
+function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <FullScreenLoading />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  return children;
+}
+
+function PublicOnlyRoute({ children }: { children: JSX.Element }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <FullScreenLoading />;
+  if (user) return <Navigate to="/" replace />;
+
+  return children;
+}
 
 function AppShell() {
   return (
@@ -70,8 +97,26 @@ export default function App() {
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/Login" element={<Login />} />
-            <Route path="/*" element={<AppShell />} />
+            <Route
+              path="/login"
+              element={
+                <PublicOnlyRoute>
+                  <Login />
+                </PublicOnlyRoute>
+              }
+            />
+            <Route
+              path="/Login"
+              element={<Navigate to="/login" replace />}
+            />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <AppShell />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
