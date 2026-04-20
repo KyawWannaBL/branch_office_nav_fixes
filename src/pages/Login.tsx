@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ROUTE_PATHS } from '@/lib/index';
 import { supabase } from '@/integrations/supabase/client';
-import { useBilingual } from '@/lib/bilingual';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type AuthTab = 'login' | 'signup';
 type LoginMethod = 'password' | 'emailLink';
@@ -46,11 +46,12 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
 
-  const { bt } = useBilingual();
+  const { lang } = useLanguage();
+  const bt = (en: string, mm: string) => (lang === 'my' ? mm : en);
+
   const navigate = useNavigate();
 
   const apkUrl = (import.meta.env.VITE_ANDROID_APK_URL as string | undefined)?.trim();
-
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedLoginEmail');
     if (savedEmail) {
