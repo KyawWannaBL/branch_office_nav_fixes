@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -9,153 +9,222 @@ import {
   TrendingUp,
   TrendingDown,
   Plus,
-  UserPlus,
   MapPin,
   Activity,
 } from 'lucide-react';
-import type { Shipment, DeliveryStatus } from '@/lib/index';
+
+import {
+  ROUTE_PATHS,
+  formatCurrency,
+  Delivery,
+  Receipt,
+  DeliveryStatus,
+  PaymentStatus,
+  Deliveryman,
+  getStatusColor,
+  getStatusLabel,
+} from '@/lib/index';
+import {
+  mockDeliveries,
+  mockReceipts,
+  mockDeliverymen,
+} from '@/data/index';
+
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ROUTE_PATHS, calculateDeliveryMetrics, calculateRevenue, formatCurrency } from '@/lib/index';
-import { mockShipments, mockDeliveries, mockEmployees, mockWarehouses } from '@/data/index';
-import { MetricCard, StatsGrid, StatusBadge } from '@/components/Stats';
-import { DeliveryTrendChart, RevenueChart, StatusDistributionChart, FleetActivityChart } from '@/components/Charts';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { StatsCard, MetricGrid } from '@/components/Stats';
+import {
+  DeliveryTrendChart,
+  RevenueChart,
+  StatusDistributionChart,
+  FleetActivityChart,
+} from '@/components/Charts';
 import { DataTable, Column } from '@/components/DataTable';
 import { MapView } from '@/components/MapView';
-import { IMAGES } from '@/assets/images';
+
+type TimeRange = 'today' | 'week' | 'month';
+
+function calculateDeliveryMetrics(deliveries: Delivery[]) {
+  const total = deliveries.length;
+  const delivered = deliveries.filter((d) => d.status === DeliveryStatus.DELIVERED).length;
+  const failed = deliveries.filter((d) =>
+    [DeliveryStatus.FAILED, DeliveryStatus.RETURNED, DeliveryStatus.CANCELLED].includes(d.status)
+  ).length;
+  const inTransit = deliveries.filter((d) =>
+    [
+      DeliveryStatus.PICKED_UP,
+      DeliveryStatus.IN_TRANSIT,
+      DeliveryStatus.OUT_FOR_DELIVERY,
+    ].includes(d.status)
+  ).length;
+  const pending = deliveries.filter((d) => d.status === DeliveryStatus.PENDING).length;
+
+  const successRate = total ? Math.round((delivered / total) * 100) : 0;
+  const onTimeRate = successRate;
+
+  return {
+    total,
+    delivered,
+    failed,
+    inTransit,
+    pending,
+    successRate,
+    onTimeRate,
+  };
+}
+
+function calculateRevenue(receipts: Receipt[]) {
+  const totalRevenue = receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+  const codCollected = receipts
+    .filter((receipt) => receipt.status === PaymentStatus.PAID)
+    .reduce((sum, receipt) => sum + receipt.amount, 0);
+  const pendingCod = receipts
+    .filter((receipt) => receipt.status !== PaymentStatus.PAID)
+    .reduce((sum, receipt) => sum + receipt.amount, 0);
+
+  return {
+    totalRevenue,
+    codCollected,
+    pendingCod,
+  };
+}
 
 export default function Dashboard() {
-  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
+  const [timeRange, setTimeRange] = useState<TimeRange>('today');
 
-  const metrics = calculateDeliveryMetrics(mockDeliveries);
-  const revenue = calculateRevenue(mockDeliveries, mockShipments);
-  const activeDrivers = mockEmployees.filter(e => e.role === 'driver' && e.status === 'active');
+  const deliveries = mockDeliveries;
+  const receipts = mockReceipts;
+  const drivers = mockDeliverymen;
+  const warehouses: any[] = [];
+
+  const metrics = useMemo(() => calculateDeliveryMetrics(deliveries), [deliveries]);
+  const revenue = useMemo(() => calculateRevenue(receipts), [receipts]);
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver: Deliveryman) => driver.status === 'active'),
+    [drivers]
+  );
 
   const kpiMetrics = [
     {
       title: 'Total Deliveries',
       value: metrics.total,
-      trend: 12.5,
+      change: 12.5,
       icon: <Package className="w-5 h-5" />,
-      unit: 'deliveries',
-      description: 'All time deliveries',
+      trend: 'up' as const,
     },
     {
       title: 'On-Time Rate',
       value: `${metrics.onTimeRate}%`,
-      trend: 2.3,
+      change: 2.3,
       icon: <Clock className="w-5 h-5" />,
-      description: 'Delivered within SLA',
+      trend: 'up' as const,
     },
     {
       title: 'Total Revenue',
       value: formatCurrency(revenue.totalRevenue),
-      trend: 18.7,
+      change: 18.7,
       icon: <DollarSign className="w-5 h-5" />,
-      description: 'This month',
+      trend: 'up' as const,
     },
     {
       title: 'Active Drivers',
       value: activeDrivers.length,
-      trend: 0,
+      change: 0,
       icon: <Users className="w-5 h-5" />,
-      unit: 'drivers',
-      description: 'Currently on duty',
+      trend: 'up' as const,
     },
   ];
 
-  const recentShipments = mockShipments.slice(0, 5);
+  const recentDeliveries = deliveries.slice(0, 5);
 
-  const shipmentColumns: Column<Shipment>[] = [
+  const deliveryColumns: Column<Delivery>[] = [
     {
-      id: 'awb',
-      header: 'AWB',
-      accessor: 'awb',
-      cell: (row: Shipment) => (
-        <span className="font-mono text-sm font-medium">{row.awb}</span>
+      id: 'wayNumber',
+      header: 'Way Number',
+      accessor: 'wayNumber',
+      cell: (row: Delivery) => (
+        <span className="font-mono text-sm font-medium">{row.wayNumber}</span>
       ),
     },
     {
-      id: 'recipient',
+      id: 'recipientName',
       header: 'Recipient',
-      accessor: 'recipient',
-      cell: (row: Shipment) => (
+      accessor: 'recipientName',
+      cell: (row: Delivery) => (
         <div>
-          <div className="font-medium">{row.recipient.name}</div>
-          <div className="text-sm text-muted-foreground">{row.recipient.phone}</div>
+          <div className="font-medium">{row.recipientName}</div>
+          <div className="text-sm text-muted-foreground">{row.recipientPhone}</div>
         </div>
       ),
     },
     {
-      id: 'serviceType',
-      header: 'Service',
-      accessor: 'serviceType',
-      cell: (row: Shipment) => (
-        <span className="capitalize">{row.serviceType.replace('-', ' ')}</span>
-      ),
+      id: 'merchantName',
+      header: 'Merchant',
+      accessor: 'merchantName',
     },
     {
       id: 'status',
       header: 'Status',
       accessor: 'status',
-      cell: (row: Shipment) => <StatusBadge status={row.status} size="sm" />,
+      cell: (row: Delivery) => (
+        <Badge className={getStatusColor(row.status)}>
+          {getStatusLabel(row.status)}
+        </Badge>
+      ),
     },
     {
-      id: 'codAmount',
-      header: 'COD Amount',
-      accessor: 'codAmount',
-      cell: (row: Shipment) => row.codAmount ? formatCurrency(row.codAmount) : '-',
+      id: 'deliveryFee',
+      header: 'Fee',
+      accessor: 'deliveryFee',
+      cell: (row: Delivery) => formatCurrency(row.deliveryFee),
     },
   ];
 
-  const deliveryTrendData = [
-    { date: 'Mon', deliveries: 145, completed: 138 },
-    { date: 'Tue', deliveries: 168, completed: 162 },
-    { date: 'Wed', deliveries: 192, completed: 185 },
-    { date: 'Thu', deliveries: 178, completed: 171 },
-    { date: 'Fri', deliveries: 205, completed: 198 },
-    { date: 'Sat', deliveries: 156, completed: 149 },
-    { date: 'Sun', deliveries: 134, completed: 128 },
-  ];
+  const deliveryTrendData =
+    deliveries.length > 0
+      ? deliveries.slice(0, 7).map((delivery, index) => ({
+          date: `D${index + 1}`,
+          deliveries: index + 1,
+          completed: delivery.status === DeliveryStatus.DELIVERED ? index + 1 : index,
+        }))
+      : [
+          { date: 'Mon', deliveries: 0, completed: 0 },
+          { date: 'Tue', deliveries: 0, completed: 0 },
+          { date: 'Wed', deliveries: 0, completed: 0 },
+          { date: 'Thu', deliveries: 0, completed: 0 },
+          { date: 'Fri', deliveries: 0, completed: 0 },
+          { date: 'Sat', deliveries: 0, completed: 0 },
+          { date: 'Sun', deliveries: 0, completed: 0 },
+        ];
 
-  const revenueData = [
-    { service: 'Express', revenue: 2800000, deliveries: 350 },
-    { service: 'Same Day', revenue: 1920000, deliveries: 160 },
-    { service: 'Standard', revenue: 1750000, deliveries: 350 },
-    { service: 'Next Day', revenue: 1500000, deliveries: 150 },
-    { service: 'Economy', revenue: 900000, deliveries: 300 },
-  ];
+  const revenueData =
+    receipts.length > 0
+      ? receipts.slice(0, 5).map((receipt) => ({
+          service: receipt.merchantName,
+          revenue: receipt.amount,
+          deliveries: receipt.deliveryCount,
+        }))
+      : [{ service: 'No Data', revenue: 0, deliveries: 0 }];
 
   const statusData = [
     { status: 'Delivered', count: metrics.delivered, color: 'hsl(var(--chart-3))' },
-    { status: 'In Transit', count: Math.floor(metrics.pending * 0.6), color: 'hsl(var(--primary))' },
-    { status: 'Pending', count: Math.floor(metrics.pending * 0.3), color: 'hsl(var(--accent))' },
+    { status: 'In Transit', count: metrics.inTransit, color: 'hsl(var(--primary))' },
+    { status: 'Pending', count: metrics.pending, color: 'hsl(var(--accent))' },
     { status: 'Failed', count: metrics.failed, color: 'hsl(var(--destructive))' },
-    { status: 'Other', count: Math.floor(metrics.pending * 0.1), color: 'hsl(var(--muted))' },
   ];
 
   const fleetData = [
-    { time: '00:00', active: 8, idle: 16 },
-    { time: '04:00', active: 12, idle: 12 },
-    { time: '08:00', active: 20, idle: 4 },
-    { time: '12:00', active: 22, idle: 2 },
-    { time: '16:00', active: 18, idle: 6 },
-    { time: '20:00', active: 14, idle: 10 },
+    { time: '00:00', active: 0, idle: drivers.length },
+    { time: '08:00', active: activeDrivers.length, idle: Math.max(drivers.length - activeDrivers.length, 0) },
+    { time: '12:00', active: activeDrivers.length, idle: Math.max(drivers.length - activeDrivers.length, 0) },
+    { time: '16:00', active: activeDrivers.length, idle: Math.max(drivers.length - activeDrivers.length, 0) },
+    { time: '20:00', active: 0, idle: drivers.length },
   ];
 
   return (
     <div className="min-h-screen bg-background">
-      <div
-        className="absolute inset-0 z-0 opacity-30"
-        style={{
-          backgroundImage: `url(${IMAGES.SCREENSHOT_10951})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background/70" />
-
       <div className="relative z-10">
         <div className="container mx-auto px-4 py-8 space-y-8">
           <motion.div
@@ -170,6 +239,7 @@ export default function Dashboard() {
                   Real-time overview of your delivery operations
                 </p>
               </div>
+
               <div className="flex gap-3">
                 <Button asChild size="lg">
                   <Link to={ROUTE_PATHS.CREATE_DELIVERY}>
@@ -177,10 +247,11 @@ export default function Dashboard() {
                     Create Delivery
                   </Link>
                 </Button>
+
                 <Button asChild variant="outline" size="lg">
-                  <Link to={ROUTE_PATHS.SUPERVISOR}>
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Assign Task
+                  <Link to={ROUTE_PATHS.DELIVERYMEN}>
+                    <Users className="w-5 h-5 mr-2" />
+                    View Drivers
                   </Link>
                 </Button>
               </div>
@@ -192,7 +263,7 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as any)} className="w-full">
+            <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)} className="w-full">
               <TabsList className="grid w-full max-w-md grid-cols-3">
                 <TabsTrigger value="today">Today</TabsTrigger>
                 <TabsTrigger value="week">This Week</TabsTrigger>
@@ -206,7 +277,18 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <StatsGrid metrics={kpiMetrics} />
+            <MetricGrid>
+              {kpiMetrics.map((metric) => (
+                <StatsCard
+                  key={metric.title}
+                  title={metric.title}
+                  value={metric.value}
+                  change={metric.change}
+                  icon={metric.icon}
+                  trend={metric.trend}
+                />
+              ))}
+            </MetricGrid>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -221,7 +303,7 @@ export default function Dashboard() {
                     <TrendingUp className="w-5 h-5 text-primary" />
                     Delivery Trends
                   </CardTitle>
-                  <CardDescription>Daily delivery performance over the past week</CardDescription>
+                  <CardDescription>Daily delivery performance overview</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <DeliveryTrendChart data={deliveryTrendData} height={300} />
@@ -238,9 +320,9 @@ export default function Dashboard() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <DollarSign className="w-5 h-5 text-chart-4" />
-                    Revenue by Service
+                    Revenue by Merchant
                   </CardTitle>
-                  <CardDescription>Revenue breakdown by service type</CardDescription>
+                  <CardDescription>Revenue breakdown from receipts</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <RevenueChart data={revenueData} height={300} />
@@ -262,14 +344,14 @@ export default function Dashboard() {
                     <MapPin className="w-5 h-5 text-primary" />
                     Fleet Activity Map
                   </CardTitle>
-                  <CardDescription>Real-time driver locations and delivery routes</CardDescription>
+                  <CardDescription>Drivers and deliveries with available coordinates</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[400px] rounded-lg overflow-hidden border border-border">
                     <MapView
-                      deliveries={mockDeliveries}
-                      drivers={activeDrivers}
-                      warehouses={mockWarehouses}
+                      deliveries={deliveries}
+                      drivers={activeDrivers as any}
+                      warehouses={warehouses as any}
                     />
                   </div>
                 </CardContent>
@@ -301,7 +383,7 @@ export default function Dashboard() {
                     <Activity className="w-5 h-5 text-primary" />
                     Fleet Activity
                   </CardTitle>
-                  <CardDescription>Vehicle utilization over 24 hours</CardDescription>
+                  <CardDescription>Driver utilization overview</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <FleetActivityChart data={fleetData} height={200} />
@@ -319,16 +401,12 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="w-5 h-5 text-primary" />
-                  Recent Shipments
+                  Recent Deliveries
                 </CardTitle>
-                <CardDescription>Latest shipments and their current status</CardDescription>
+                <CardDescription>Latest deliveries and their current status</CardDescription>
               </CardHeader>
               <CardContent>
-                <DataTable
-                  columns={shipmentColumns}
-                  data={recentShipments}
-                  searchable
-                />
+                <DataTable columns={deliveryColumns} data={recentDeliveries} searchable />
               </CardContent>
             </Card>
           </motion.div>
