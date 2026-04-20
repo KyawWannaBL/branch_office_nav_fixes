@@ -66,9 +66,5 @@ interface MetricGridProps {
 }
 
 export function MetricGrid({ children }: MetricGridProps) {
-  return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-      {children}
-    </div>
-  );
+  return <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
 }
