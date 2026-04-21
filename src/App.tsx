@@ -24,6 +24,7 @@ import SupervisorPortal from "./pages/SupervisorPortal";
 import DataEntryPortal from "./pages/DataEntryPortal";
 import CustomerServicePortal from "./pages/CustomerServicePortal";
 import CustomerPortal from "./pages/CustomerPortal";
+import FinancialCenter from "./pages/FinancialCenter";
 
 // Extended pages
 import Login from "./pages/Login";
@@ -90,6 +91,7 @@ const App = () => (
                           <Route path="/waybill/*" element={<Waybill />} />
                           <Route path="/reporting/*" element={<Reporting />} />
                           <Route path="/settings/*" element={<Settings />} />
+			<Route path="/finance" element={<FinancialCenter />} />
 
                           <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
