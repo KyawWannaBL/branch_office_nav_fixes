@@ -249,12 +249,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar - Desktop */}
-      <aside
-        className={cn(
-          "fixed left-0 top-0 z-40 h-screen bg-card border-r border-border transition-all duration-300 hidden lg:block",
-          sidebarOpen ? "w-64" : "w-20"
-        )}
-      >
+<div className="min-h-screen bg-background flex">
+  <aside
+    className={cn(
+      "relative shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-300",
+      sidebarOpen ? "w-64" : "w-20"
+    )}
+  >
+    ...
+  </aside>
+
+  <div className="min-w-0 flex-1">
+    <header className="sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur">
+      ...
+    </header>
+
+    <main className="p-6">{children}</main>
+  </div>
+</div>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-border">

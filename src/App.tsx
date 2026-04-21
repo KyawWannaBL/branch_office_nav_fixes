@@ -51,7 +51,7 @@ const App = () => (
           <Route
             path="/*"
             element={
-              <SidebarProvider defaultOpen={false}>
+              <SidebarProvider defaultOpen={true}>
                 <div className="flex h-screen w-full overflow-hidden bg-background">
                   <Sidebar />
                   <SidebarInset>
@@ -91,7 +91,7 @@ const App = () => (
                           <Route path="/waybill/*" element={<Waybill />} />
                           <Route path="/reporting/*" element={<Reporting />} />
                           <Route path="/settings/*" element={<Settings />} />
-			<Route path="/finance" element={<FinancialCenter />} />
+                          <Route path="/finance/*" element={<FinancialCenter />} />
 
                           <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
