@@ -24,6 +24,7 @@ import {
   Briefcase,
   ClipboardCheck,
   BadgeCheck,
+  DollarSign,
 } from "lucide-react";
 import {
   Sidebar as UISidebar,
@@ -39,6 +40,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
 
 type NavItem = {
   title: string;
@@ -73,6 +75,7 @@ const portalNav: NavItem[] = [
   { title: "Admin Controls", path: "/admin-hr/admin", icon: BadgeCheck },
   { title: "HR Reports", path: "/admin-hr/reports", icon: BarChart3 },
   { title: "Deliverymen", path: "/deliverymen", icon: Truck },
+  { title: "Financial Center", path: "/finance", icon: DollarSign },
 ];
 
 const systemNav: NavItem[] = [
@@ -81,21 +84,35 @@ const systemNav: NavItem[] = [
   { title: "Settings", path: "/settings", icon: SettingsIcon },
 ];
 
-function roleLabel(user: any) {
-  const raw =
+function normalizeRole(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
+}
+
+function mapDisplayRole(value?: string | null) {
+  const normalized = normalizeRole(value);
+
+  if (!normalized) return "USER";
+  if (normalized === "SYS") return "SUPER_ADMIN";
+  return normalized;
+}
+
+function pickRoleFromMetadata(user: any) {
+  return (
     user?.user_metadata?.roleCode ||
     user?.user_metadata?.role_code ||
     user?.user_metadata?.app_role ||
     user?.user_metadata?.user_role ||
     user?.user_metadata?.role ||
-    "USER";
-
-  if (String(raw).toUpperCase() === "SYS") return "SUPER_ADMIN";
-  return String(raw).toUpperCase();
+    ""
+  );
 }
 
-function displayName(user: any) {
+function displayName(user: any, profileName?: string | null) {
   return (
+    profileName ||
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     user?.email ||
@@ -152,17 +169,73 @@ export function Sidebar({ className }: { className?: string }) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const [resolvedRole, setResolvedRole] = useState("USER");
+  const [resolvedName, setResolvedName] = useState<string | null>(null);
+
+  const userId = user?.id;
+
+  useEffect(() => {
+    let active = true;
+
+    async function resolveIdentity() {
+      const metaRole = pickRoleFromMetadata(user);
+      const metaName =
+        user?.user_metadata?.full_name || user?.user_metadata?.name || null;
+
+      if (metaRole) {
+        if (!active) return;
+        setResolvedRole(mapDisplayRole(metaRole));
+        setResolvedName(metaName);
+        return;
+      }
+
+      if (!userId) {
+        if (!active) return;
+        setResolvedRole("USER");
+        setResolvedName(metaName);
+        return;
+      }
+
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("full_name, role, role_code, app_role, user_role")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (!active) return;
+
+        const profileRole =
+          data?.role_code || data?.app_role || data?.user_role || data?.role;
+
+        setResolvedRole(mapDisplayRole(profileRole));
+        setResolvedName(data?.full_name || metaName);
+      } catch {
+        if (!active) return;
+        setResolvedRole("USER");
+        setResolvedName(metaName);
+      }
+    }
+
+    void resolveIdentity();
+
+    return () => {
+      active = false;
+    };
+  }, [user, userId]);
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     navigate("/login", { replace: true });
   }
 
+  const shownName = useMemo(
+    () => displayName(user, resolvedName),
+    [user, resolvedName]
+  );
+
   return (
-    <UISidebar
-      className={className}
-      variant="inset"
-      collapsible="icon"
-    >
+    <UISidebar className={className} variant="inset" collapsible="offcanvas">
       <SidebarHeader className="border-b border-slate-200 bg-white/90 p-3">
         <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] px-4 py-4 shadow-sm">
           <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-700">
@@ -174,7 +247,7 @@ export function Sidebar({ className }: { className?: string }) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-white px-3 py-3">
+      <SidebarContent className="bg-white px-3 py-3 overflow-y-auto">
         <NavSection title="Core" items={coreNav} pathname={location.pathname} />
         <NavSection title="Portals" items={portalNav} pathname={location.pathname} />
         <NavSection title="System" items={systemNav} pathname={location.pathname} />
@@ -185,10 +258,10 @@ export function Sidebar({ className }: { className?: string }) {
       <SidebarFooter className="bg-white p-3">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           <div>Signed in as</div>
-          <div className="mt-1 truncate font-bold text-slate-900">{displayName(user)}</div>
+          <div className="mt-1 truncate font-bold text-slate-900">{shownName}</div>
           <div className="mt-1 truncate text-[11px] text-slate-500">{user?.email || "-"}</div>
           <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-            Role: {roleLabel(user)}
+            Role: {resolvedRole}
           </div>
         </div>
 
