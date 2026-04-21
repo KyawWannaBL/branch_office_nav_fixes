@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -6,124 +6,94 @@
 
 /*
 ==========================================================================
-【AI HANDOVER NOTE】
-1. DESIGN PHILOSOPHY:
-   - Atmosphere-First Enterprise Design: This system prioritizes operational clarity and real-time data visibility for 24/7 logistics operations. The design language combines Neo-minimalism with Physicality principles—clean surfaces with subtle depth cues (rim-light, ambient occlusion) to create visual hierarchy without clutter.
-   - Bento/Modular Surfaces: Dashboard uses card-based layouts with clear boundaries for different operational zones (KPIs, active deliveries, warehouse status, fleet tracking). Each module is self-contained yet part of a cohesive grid system.
-   - Glassmorphism 2.0 for Overlays: Modal dialogs, notification panels, and real-time status overlays use subtle backdrop-blur with high-contrast text to maintain readability during critical operations.
-   - Why this style: Logistics platforms require instant data comprehension under stress. The design balances information density with breathing room, using color-coded status systems and clear typographic hierarchy to support split-second decision-making.
-
-2. TYPOGRAPHY:
-   - Sans (Inter): Selected for its exceptional legibility at small sizes and neutral geometric structure. Inter's wide apertures and tall x-height ensure readability in data-dense tables and metric cards. The font's technical precision matches the operational nature of logistics software while remaining approachable for diverse user roles (supervisors, drivers, warehouse staff).
-   - Mono (JetBrains Mono): Purpose-built for displaying tracking codes, shipment IDs, timestamps, and tabular data. Its increased letter spacing and distinct character shapes (0 vs O, 1 vs l) prevent misreading critical identifiers. Used in proof-of-delivery screens, manifest lists, and QR code displays.
-
-3. COLOR SYSTEM:
-   - Brand Primary (Hue 220°): Professional blue conveys trust, reliability, and operational stability—essential for enterprise logistics. The 220° hue sits between pure blue and cyan, providing a modern, tech-forward feel without the coldness of pure blue.
-   - --brand maps to --primary (buttons, active states), --accent (highlights, notifications), and --ring (focus indicators) to maintain brand consistency across interactive elements.
-   - Semantic Colors:
-     * success (Hue 150°): Teal-green for completed deliveries, successful operations—chosen over pure green for better distinction from warning states
-     * warning (Hue 45°): Amber for pending/delayed shipments, attention-required states
-     * destructive (Hue 10°): Coral-red for failed deliveries, critical alerts—slightly orange-shifted to reduce alarm fatigue
-   - Chart Colors: Five distinct hues (220°, 280°, 160°, 30°, 340°) for multi-series data visualization (delivery trends, revenue charts, status distribution)
-   - Sidebar System: Dedicated tokens for navigation sidebar with subtle contrast to main content area, supporting role-based portal switching
-
-4. USAGE GUIDE:
-   - Layout Type: Dashboard full-width with responsive grid (12-column on desktop, 4-column on tablet, single-column on mobile). Fixed header with role indicator and notification bell. Collapsible sidebar for portal navigation.
-   - Special Effects:
-     * Rim-light: 1px top border (oklch(1 0 0 / 0.1)) on elevated cards to simulate ambient lighting
-     * Backdrop-blur: 12px blur on modals/overlays with 80% opacity background
-     * Status Badges: Solid backgrounds with 0.5rem padding, 9999px border-radius for pill shape
-   - Real-time Updates: Use --accent with subtle pulse animation for live tracking indicators. WebSocket notifications trigger toast messages with 4-second auto-dismiss.
-   - Data Tables: Alternating row backgrounds (--muted/5% opacity) for improved scannability. Sticky headers for long lists. Inline action buttons on hover.
-   - Mobile Considerations: Bottom navigation for driver/rider portals. Larger touch targets (44px minimum). Simplified metric cards with single-column layout.
-   - Dark Mode: Automatically enabled for night shift operations (6 PM - 6 AM) or user preference. Reduced contrast ratios to prevent eye strain during extended use.
+AI HANDOVER NOTE
 ==========================================================================
 */
 
 :root {
   /* Typography */
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: JetBrains Mono, 'Courier New', Consolas, monospace;
-  
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+
   /* Radius */
-  --radius: 0.75rem;
+  --radius: 0.5rem;
 
   /* Core UI Tokens */
   --background: oklch(0.99 0 0);
   --foreground: oklch(0.15 0.01 240);
-  --card: oklch(0.98 0 0);
+  --card: oklch(0.98 0.005 240);
   --card-foreground: oklch(0.15 0.01 240);
   --popover: oklch(0.99 0 0);
   --popover-foreground: oklch(0.15 0.01 240);
-  --primary: oklch(0.52 0.18 220);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.92 0.01 240);
-  --secondary-foreground: oklch(0.20 0.01 240);
-  --muted: oklch(0.94 0.01 240);
+  --primary: oklch(0.55 0.15 195);
+  --primary-foreground: oklch(0.98 0.01 195);
+  --secondary: oklch(0.94 0.01 240);
+  --secondary-foreground: oklch(0.2 0.01 240);
+  --muted: oklch(0.96 0.005 240);
   --muted-foreground: oklch(0.48 0.01 240);
-  --accent: oklch(0.88 0.08 220);
-  --accent-foreground: oklch(0.20 0.01 240);
-  --destructive: oklch(0.58 0.20 10);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.88 0.01 240);
-  --input: oklch(0.88 0.01 240);
-  --ring: oklch(0.52 0.18 220);
-  
+  --accent: oklch(0.92 0.03 195);
+  --accent-foreground: oklch(0.2 0.02 195);
+  --destructive: oklch(0.58 0.18 10);
+  --destructive-foreground: oklch(0.98 0.01 10);
+  --border: oklch(0.89 0.005 240);
+  --input: oklch(0.89 0.005 240);
+  --ring: oklch(0.55 0.15 195);
+
   /* Chart Tokens */
-  --chart-1: oklch(0.60 0.18 220);
-  --chart-2: oklch(0.62 0.16 280);
-  --chart-3: oklch(0.65 0.15 160);
-  --chart-4: oklch(0.68 0.18 30);
-  --chart-5: oklch(0.58 0.20 340);
-  
+  --chart-1: oklch(0.55 0.15 195);
+  --chart-2: oklch(0.58 0.16 270);
+  --chart-3: oklch(0.62 0.14 150);
+  --chart-4: oklch(0.68 0.15 30);
+  --chart-5: oklch(0.6 0.17 340);
+
   /* Sidebar Tokens */
-  --sidebar: oklch(0.97 0 0);
-  --sidebar-foreground: oklch(0.20 0.01 240);
-  --sidebar-primary: oklch(0.52 0.18 220);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.90 0.06 220);
-  --sidebar-accent-foreground: oklch(0.20 0.01 240);
-  --sidebar-border: oklch(0.90 0.01 240);
-  --sidebar-ring: oklch(0.52 0.18 220);
+  --sidebar: oklch(0.985 0.003 240);
+  --sidebar-foreground: oklch(0.22 0.01 240);
+  --sidebar-primary: oklch(0.55 0.15 195);
+  --sidebar-primary-foreground: oklch(0.98 0.01 195);
+  --sidebar-accent: oklch(0.92 0.03 195);
+  --sidebar-accent-foreground: oklch(0.18 0.01 240);
+  --sidebar-border: oklch(0.9 0.005 240);
+  --sidebar-ring: oklch(0.55 0.15 195);
 }
 
 .dark {
   --background: oklch(0.12 0.01 240);
   --foreground: oklch(0.92 0.01 240);
-  --card: oklch(0.15 0.01 240);
+  --card: oklch(0.15 0.012 240);
   --card-foreground: oklch(0.92 0.01 240);
-  --popover: oklch(0.12 0.01 240);
+  --popover: oklch(0.14 0.012 240);
   --popover-foreground: oklch(0.92 0.01 240);
-  --primary: oklch(0.62 0.22 220);
-  --primary-foreground: oklch(0.12 0.01 240);
-  --secondary: oklch(0.22 0.02 240);
+  --primary: oklch(0.65 0.18 195);
+  --primary-foreground: oklch(0.12 0.01 195);
+  --secondary: oklch(0.22 0.015 240);
   --secondary-foreground: oklch(0.88 0.01 240);
-  --muted: oklch(0.20 0.02 240);
-  --muted-foreground: oklch(0.62 0.01 240);
-  --accent: oklch(0.32 0.12 220);
-  --accent-foreground: oklch(0.92 0.01 240);
-  --destructive: oklch(0.62 0.24 10);
-  --destructive-foreground: oklch(0.92 0.01 240);
-  --border: oklch(0.25 0.02 240);
-  --input: oklch(0.25 0.02 240);
-  --ring: oklch(0.62 0.22 220);
-  
+  --muted: oklch(0.2 0.012 240);
+  --muted-foreground: oklch(0.58 0.01 240);
+  --accent: oklch(0.28 0.05 195);
+  --accent-foreground: oklch(0.88 0.02 195);
+  --destructive: oklch(0.62 0.22 10);
+  --destructive-foreground: oklch(0.95 0.01 10);
+  --border: oklch(0.25 0.015 240);
+  --input: oklch(0.25 0.015 240);
+  --ring: oklch(0.65 0.18 195);
+
   /* Chart Tokens */
-  --chart-1: oklch(0.68 0.22 220);
-  --chart-2: oklch(0.70 0.20 280);
-  --chart-3: oklch(0.72 0.18 160);
-  --chart-4: oklch(0.75 0.22 30);
-  --chart-5: oklch(0.65 0.24 340);
-  
+  --chart-1: oklch(0.65 0.18 195);
+  --chart-2: oklch(0.68 0.19 270);
+  --chart-3: oklch(0.7 0.16 150);
+  --chart-4: oklch(0.75 0.17 30);
+  --chart-5: oklch(0.68 0.2 340);
+
   /* Sidebar Tokens */
-  --sidebar: oklch(0.10 0.01 240);
-  --sidebar-foreground: oklch(0.88 0.01 240);
-  --sidebar-primary: oklch(0.62 0.22 220);
-  --sidebar-primary-foreground: oklch(0.12 0.01 240);
-  --sidebar-accent: oklch(0.28 0.10 220);
-  --sidebar-accent-foreground: oklch(0.88 0.01 240);
-  --sidebar-border: oklch(0.22 0.02 240);
-  --sidebar-ring: oklch(0.62 0.22 220);
+  --sidebar: oklch(0.14 0.01 240);
+  --sidebar-foreground: oklch(0.9 0.01 240);
+  --sidebar-primary: oklch(0.62 0.2 210);
+  --sidebar-primary-foreground: oklch(0.1 0.01 240);
+  --sidebar-accent: oklch(0.24 0.04 220);
+  --sidebar-accent-foreground: oklch(0.94 0.01 240);
+  --sidebar-border: oklch(0.24 0.02 240);
+  --sidebar-ring: oklch(0.62 0.2 210);
 }
 
 @theme inline {
@@ -186,15 +156,21 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans min-h-screen;
+    @apply min-h-screen bg-background font-sans text-foreground;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight;
   }
 
-  code, pre {
+  code,
+  pre {
     @apply font-mono;
   }
 
@@ -206,10 +182,16 @@
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
+
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40;
+    @apply rounded-full bg-muted-foreground/20 hover:bg-muted-foreground/40;
   }
+}
+
+:root {
+  font-family: "Inter", "Noto Sans Myanmar", system-ui, sans-serif;
 }
