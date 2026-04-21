@@ -1,81 +1,109 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import type { ComponentType } from "react";
 import {
   LayoutDashboard,
-  UserCircle2,
-  Wallet,
   Package,
-  Map,
-  ShieldCheck,
-  Database,
-  Headset,
-  Building2,
   Users,
-  Truck,
+  Store,
+  Settings as SettingsIcon,
   FileText,
   BarChart3,
-  Settings,
-  Briefcase,
-  ClipboardCheck,
-  BadgeCheck,
+  Map,
+  Headset,
+  UserSquare2,
+  ShieldCheck,
+  Database,
   Building,
   Warehouse,
   Archive,
   Layers3,
   QrCode,
+  Truck,
+  Wallet,
+  UserCircle2,
   LogOut,
+  Briefcase,
+  ClipboardCheck,
+  BadgeCheck,
 } from "lucide-react";
+import {
+  Sidebar as UISidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarFooter,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarSeparator,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type NavItem = {
   title: string;
-  url: string;
-  icon: ComponentType<{ className?: string }>;
-  aliases?: string[];
+  path: string;
+  icon: any;
 };
 
 const coreNav: NavItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Profile", url: "/profile", icon: UserCircle2 },
-  { title: "Wallet Hub", url: "/wallet", icon: Wallet },
-  { title: "Create Delivery", url: "/create-delivery", icon: Package },
-  { title: "Way Management", url: "/way-management", icon: Map },
+  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { title: "Profile", path: "/profile", icon: UserCircle2 },
+  { title: "Wallet Hub", path: "/wallet", icon: Wallet },
+  { title: "Create Delivery", path: "/create-delivery", icon: Package },
+  { title: "Way Management", path: "/way-management", icon: Map },
 ];
 
 const portalNav: NavItem[] = [
-  { title: "Supervisor Control", url: "/supervisor", icon: ShieldCheck },
-  { title: "Data Entry Portal", url: "/data-entry", icon: Database },
-  { title: "Customer Service", url: "/customer-service", icon: Headset },
-  { title: "Customer Portal", url: "/customer", icon: Users },
-  { title: "Merchant Portal", url: "/merchant", icon: Building2, aliases: ["/merchants"] },
-  { title: "Branch Office", url: "/branch-office", icon: Building },
-  { title: "Warehouse Portal", url: "/warehouse", icon: Warehouse },
-  { title: "WH Inbound", url: "/warehouse/inbound", icon: Package },
-  { title: "WH Staging", url: "/warehouse/staging", icon: Layers3 },
-  { title: "WH Storage", url: "/warehouse/storage", icon: Archive },
-  { title: "WH Outbound", url: "/warehouse/outbound", icon: Truck },
-  { title: "WH QR Scanner", url: "/warehouse/qr", icon: QrCode },
-  { title: "Admin & HR Portal", url: "/admin-hr", icon: Users, aliases: ["/admin/hr-admin"] },
-  { title: "HR Employees", url: "/admin-hr/employees", icon: Briefcase },
-  { title: "HR Approvals", url: "/admin-hr/approvals", icon: ClipboardCheck },
-  { title: "Admin Controls", url: "/admin-hr/admin", icon: BadgeCheck, aliases: ["/admin/operations"] },
-  { title: "HR Reports", url: "/admin-hr/reports", icon: BarChart3 },
-  { title: "Deliverymen", url: "/deliverymen", icon: Truck },
+  { title: "Supervisor Control", path: "/supervisor", icon: ShieldCheck },
+  { title: "Data Entry Portal", path: "/data-entry", icon: Database },
+  { title: "Customer Service", path: "/customer-service", icon: Headset },
+  { title: "Customer Portal", path: "/customer", icon: UserSquare2 },
+  { title: "Merchant Portal", path: "/merchant", icon: Store },
+  { title: "Branch Office", path: "/branch-office", icon: Building },
+  { title: "Warehouse Portal", path: "/warehouse", icon: Warehouse },
+  { title: "WH Inbound", path: "/warehouse/inbound", icon: Package },
+  { title: "WH Staging", path: "/warehouse/staging", icon: Layers3 },
+  { title: "WH Storage", path: "/warehouse/storage", icon: Archive },
+  { title: "WH Outbound", path: "/warehouse/outbound", icon: Truck },
+  { title: "WH QR Scanner", path: "/warehouse/qr", icon: QrCode },
+  { title: "Admin & HR Portal", path: "/admin-hr", icon: Users },
+  { title: "HR Employees", path: "/admin-hr/employees", icon: Briefcase },
+  { title: "HR Approvals", path: "/admin-hr/approvals", icon: ClipboardCheck },
+  { title: "Admin Controls", path: "/admin-hr/admin", icon: BadgeCheck },
+  { title: "HR Reports", path: "/admin-hr/reports", icon: BarChart3 },
+  { title: "Deliverymen", path: "/deliverymen", icon: Truck },
 ];
 
 const systemNav: NavItem[] = [
-  { title: "Waybill", url: "/waybill", icon: FileText, aliases: ["/receipts"] },
-  { title: "Reporting", url: "/reporting", icon: BarChart3 },
-  { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Waybill", path: "/waybill", icon: FileText },
+  { title: "Reporting", path: "/reporting", icon: BarChart3 },
+  { title: "Settings", path: "/settings", icon: SettingsIcon },
 ];
 
-function isItemActive(pathname: string, item: NavItem) {
-  const candidates = [item.url, ...(item.aliases || [])];
-  return candidates.some((candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`));
+function roleLabel(user: any) {
+  const raw =
+    user?.user_metadata?.roleCode ||
+    user?.user_metadata?.role_code ||
+    user?.user_metadata?.app_role ||
+    user?.user_metadata?.user_role ||
+    user?.user_metadata?.role ||
+    "USER";
+
+  if (String(raw).toUpperCase() === "SYS") return "SUPER_ADMIN";
+  return String(raw).toUpperCase();
 }
 
-function SidebarSection({
+function displayName(user: any) {
+  return (
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    "Unknown User"
+  );
+}
+
+function NavSection({
   title,
   items,
   pathname,
@@ -85,61 +113,44 @@ function SidebarSection({
   pathname: string;
 }) {
   return (
-    <div className="mt-6">
-      <div className="px-6 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+    <div className="mt-5">
+      <div className="px-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
         {title}
       </div>
 
-      <div className="mt-3 space-y-1 px-3">
+      <SidebarMenu className="mt-2">
         {items.map((item) => {
-          const active = isItemActive(pathname, item);
+          const Icon = item.icon;
+          const isActive =
+            pathname === item.path || pathname.startsWith(`${item.path}/`);
 
           return (
-            <Link
-              key={item.url}
-              to={item.url}
-              className={[
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                active ? "bg-cyan-500/15 text-cyan-200" : "text-slate-100 hover:bg-white/10",
-              ].join(" ")}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              <span className="truncate">{item.title}</span>
-            </Link>
+            <SidebarMenuItem key={item.path}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive}
+                className={cn(
+                  "h-11 rounded-xl text-slate-800 hover:bg-sky-50 hover:text-sky-900 data-[active=true]:bg-sky-600 data-[active=true]:text-white",
+                  "font-semibold"
+                )}
+              >
+                <Link to={item.path} className="flex items-center gap-3">
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           );
         })}
-      </div>
+      </SidebarMenu>
     </div>
   );
 }
 
-function getDisplayName(user: any) {
-  return (
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    user?.email ||
-    "Unknown User"
-  );
-}
-
-function getRoleLabel(user: any) {
-  return (
-    user?.user_metadata?.roleCode ||
-    user?.user_metadata?.role_code ||
-    user?.user_metadata?.app_role ||
-    user?.user_metadata?.user_role ||
-    user?.user_metadata?.role ||
-    "USER"
-  );
-}
-
-export default function Sidebar() {
+export function Sidebar({ className }: { className?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  const displayName = getDisplayName(user);
-  const roleLabel = getRoleLabel(user);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -147,43 +158,53 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-white/10 bg-[linear-gradient(180deg,#061120_0%,#0A1830_100%)] text-white shadow-2xl">
-      <div className="border-b border-white/10 p-3">
-        <div className="rounded-2xl border border-cyan-500/15 bg-[linear-gradient(180deg,#081526_0%,#0b1e37_100%)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
-          <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-300">
+    <UISidebar
+      className={className}
+      variant="inset"
+      collapsible="icon"
+    >
+      <SidebarHeader className="border-b border-slate-200 bg-white/90 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] px-4 py-4 shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-700">
             Enterprise Suite
           </div>
-          <div className="mt-1 text-xl font-black text-white">
+          <div className="mt-1 text-2xl font-black text-slate-900">
             Britium Operations
           </div>
         </div>
-      </div>
+      </SidebarHeader>
 
-      <div className="flex-1 overflow-y-auto py-4">
-        <SidebarSection title="Core" items={coreNav} pathname={location.pathname} />
-        <SidebarSection title="Portals" items={portalNav} pathname={location.pathname} />
-        <SidebarSection title="System" items={systemNav} pathname={location.pathname} />
-      </div>
+      <SidebarContent className="bg-white px-3 py-3">
+        <NavSection title="Core" items={coreNav} pathname={location.pathname} />
+        <NavSection title="Portals" items={portalNav} pathname={location.pathname} />
+        <NavSection title="System" items={systemNav} pathname={location.pathname} />
+      </SidebarContent>
 
-      <div className="border-t border-white/10 p-3 space-y-3">
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
-          Signed in as
-          <div className="mt-1 truncate font-bold text-white">{displayName}</div>
-          <div className="mt-1 truncate text-[11px] text-slate-300">{user?.email || "-"}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-widest opacity-60">
-            Role: {String(roleLabel).toUpperCase()}
+      <SidebarSeparator />
+
+      <SidebarFooter className="bg-white p-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+          <div>Signed in as</div>
+          <div className="mt-1 truncate font-bold text-slate-900">{displayName(user)}</div>
+          <div className="mt-1 truncate text-[11px] text-slate-500">{user?.email || "-"}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
+            Role: {roleLabel(user)}
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => void handleSignOut()}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
         >
           <LogOut className="h-4 w-4" />
           Sign Out
         </button>
-      </div>
-    </aside>
+      </SidebarFooter>
+
+      <SidebarRail />
+    </UISidebar>
   );
 }
+
+export default Sidebar;

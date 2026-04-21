@@ -4,7 +4,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Sidebar } from "./components/Sidebar";
 
 // Core pages
@@ -13,7 +17,7 @@ import CreateDelivery from "./pages/CreateDelivery";
 import WayManagement from "./pages/WayManagement";
 import Deliverymen from "./pages/Deliverymen";
 import Merchants from "./pages/Merchants";
-import Waybill from "@/pages/Waybill";
+import Waybill from "@/pages/waybill"; // keep lowercase if your file is src/pages/waybill.tsx
 import Reporting from "./pages/Reporting";
 import Settings from "./pages/Settings";
 import SupervisorPortal from "./pages/SupervisorPortal";
@@ -46,10 +50,17 @@ const App = () => (
           <Route
             path="/*"
             element={
-              <SidebarProvider defaultOpen={true}>
+              <SidebarProvider defaultOpen={false}>
                 <div className="flex h-screen w-full overflow-hidden bg-background">
                   <Sidebar />
                   <SidebarInset>
+                    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/85 px-4 backdrop-blur">
+                      <SidebarTrigger className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" />
+                      <div className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                        Britium Express Enterprise Platform
+                      </div>
+                    </header>
+
                     <main className="flex-1 overflow-y-auto p-4 md:p-8">
                       <Suspense
                         fallback={
