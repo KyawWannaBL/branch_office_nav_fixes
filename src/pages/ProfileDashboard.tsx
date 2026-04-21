@@ -19,6 +19,13 @@ import {
   Loader2,
 } from "lucide-react";
 
+function normalizeRole(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
+}
+
 // 1. RIDER PROFILE
 const RiderProfile = ({ userId }: { userId: string }) => {
   const [profile, setProfile] = useState<any>(null);
@@ -57,7 +64,8 @@ const RiderProfile = ({ userId }: { userId: string }) => {
         setLoading(false);
       }
     }
-    fetchRiderData();
+
+    void fetchRiderData();
   }, [userId]);
 
   if (loading) {
@@ -87,6 +95,7 @@ const RiderProfile = ({ userId }: { userId: string }) => {
               <User size={32} />
             </div>
           )}
+
           <div className="absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-white">
             <CheckCircle2 size={16} />
           </div>
@@ -118,7 +127,7 @@ const RiderProfile = ({ userId }: { userId: string }) => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-12">
-        <div className="rounded-[28px] bg-[linear-gradient(180deg,#0d2c54_0%,#0a2343_100%)] p-6 text-white shadow-xl md:col-span-7">
+        <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#0d2c54_0%,#0a2343_100%)] p-6 text-white shadow-xl md:col-span-7">
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-sky-300">
               <Wallet size={16} />
@@ -241,7 +250,8 @@ const MerchantProfile = ({ userId }: { userId: string }) => {
         setLoading(false);
       }
     }
-    fetchMerchantData();
+
+    void fetchMerchantData();
   }, [userId]);
 
   if (loading) {
@@ -357,10 +367,18 @@ const CustomerProfile = ({ userId }: { userId: string }) => {
           .eq("id", userId)
           .single();
 
+        setProfile(profileData);
+
+        if (!profileData?.phone) {
+          setHistory([]);
+          setAddresses([]);
+          return;
+        }
+
         const { data: waysData } = await supabase
           .from("shipments")
           .select("id, tracking_number, sender_name, status, created_at")
-          .or(`recipient_phone.eq.${profileData?.phone},sender_phone.eq.${profileData?.phone}`)
+          .or(`recipient_phone.eq.${profileData.phone},sender_phone.eq.${profileData.phone}`)
           .order("created_at", { ascending: false })
           .limit(3);
 
@@ -369,7 +387,6 @@ const CustomerProfile = ({ userId }: { userId: string }) => {
           .select("*")
           .eq("customer_id", userId);
 
-        setProfile(profileData);
         setHistory(waysData || []);
         setAddresses(addrData || []);
       } catch (error) {
@@ -378,7 +395,8 @@ const CustomerProfile = ({ userId }: { userId: string }) => {
         setLoading(false);
       }
     }
-    fetchCustomerData();
+
+    void fetchCustomerData();
   }, [userId]);
 
   if (loading) {
@@ -424,14 +442,14 @@ const CustomerProfile = ({ userId }: { userId: string }) => {
                       <p className="text-sm font-black text-[#0d2c54]">From: {way.sender_name}</p>
                     </div>
                     <span className="rounded bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">
-                      {String(way.status).replace("_", " ")}
+                      {String(way.status).replaceAll("_", " ")}
                     </span>
                   </div>
 
                   {way.status === "DELIVERED" && (
                     <div className="mt-3 border-t border-slate-200 pt-3">
                       <p className="mb-2 text-xs font-bold text-slate-600">Rate your rider:</p>
-                      <div className="flex gap-1 cursor-pointer text-slate-300">
+                      <div className="flex cursor-pointer gap-1 text-slate-300">
                         {[...Array(5)].map((_, i) => (
                           <Star key={i} size={20} className="transition hover:text-[#ffd700]" />
                         ))}
@@ -491,7 +509,8 @@ const FinanceProfile = ({ userId }: { userId: string }) => {
         setLoading(false);
       }
     }
-    fetchFinanceData();
+
+    void fetchFinanceData();
   }, [userId]);
 
   return (
@@ -562,13 +581,6 @@ const FinanceProfile = ({ userId }: { userId: string }) => {
     </div>
   );
 };
-
-function normalizeRole(value?: string | null) {
-  return String(value || "")
-    .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
-}
 
 // --- MAIN WRAPPER ---
 export default function ProfileDashboard() {
