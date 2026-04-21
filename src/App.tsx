@@ -13,7 +13,7 @@ import CreateDelivery from "./pages/CreateDelivery";
 import WayManagement from "./pages/WayManagement";
 import Deliverymen from "./pages/Deliverymen";
 import Merchants from "./pages/Merchants";
-import Waybill from "@/pages/waybill";
+import Waybill from "@/pages/Waybill";
 import Reporting from "./pages/Reporting";
 import Settings from "./pages/Settings";
 import SupervisorPortal from "./pages/SupervisorPortal";
