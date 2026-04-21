@@ -25,6 +25,8 @@ import {
   ClipboardCheck,
   BadgeCheck,
   DollarSign,
+  Megaphone,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Sidebar as UISidebar,
@@ -41,11 +43,12 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
+import { normalizeRole } from "@/lib/portalRegistry";
 
 type NavItem = {
   title: string;
   path: string;
-  icon: any;
+  icon: LucideIcon;
 };
 
 const coreNav: NavItem[] = [
@@ -76,6 +79,7 @@ const portalNav: NavItem[] = [
   { title: "HR Reports", path: "/admin-hr/reports", icon: BarChart3 },
   { title: "Deliverymen", path: "/deliverymen", icon: Truck },
   { title: "Financial Center", path: "/finance", icon: DollarSign },
+  { title: "Marketing Portal", path: "/marketing", icon: Megaphone },
 ];
 
 const systemNav: NavItem[] = [
@@ -84,16 +88,8 @@ const systemNav: NavItem[] = [
   { title: "Settings", path: "/settings", icon: SettingsIcon },
 ];
 
-function normalizeRole(value?: string | null) {
-  return String(value || "")
-    .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
-}
-
 function mapDisplayRole(value?: string | null) {
   const normalized = normalizeRole(value);
-
   if (!normalized) return "USER";
   if (normalized === "SYS") return "SUPER_ADMIN";
   return normalized;
@@ -147,8 +143,9 @@ function NavSection({
                 asChild
                 isActive={isActive}
                 className={cn(
-                  "h-11 rounded-xl text-slate-800 hover:bg-sky-50 hover:text-sky-900 data-[active=true]:bg-sky-600 data-[active=true]:text-white",
-                  "font-semibold"
+                  "h-11 rounded-xl font-semibold text-slate-800",
+                  "hover:bg-sky-50 hover:text-sky-900",
+                  "data-[active=true]:bg-sky-600 data-[active=true]:text-white"
                 )}
               >
                 <Link to={item.path} className="flex items-center gap-3">
@@ -247,7 +244,7 @@ export function Sidebar({ className }: { className?: string }) {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-white px-3 py-3 overflow-y-auto">
+      <SidebarContent className="overflow-y-auto bg-white px-3 py-3">
         <NavSection title="Core" items={coreNav} pathname={location.pathname} />
         <NavSection title="Portals" items={portalNav} pathname={location.pathname} />
         <NavSection title="System" items={systemNav} pathname={location.pathname} />

@@ -22,6 +22,36 @@ export function defaultPortalForRole(role?: string | null): string {
     return "/admin-hr/admin";
   }
 
+  if (
+    [
+      "FINANCE",
+      "FIN",
+      "FINM",
+      "ACCOUNTING",
+      "ACCOUNTANT",
+      "FINANCE_ADMIN",
+      "FINANCE_MANAGER",
+      "FINANCE_ANALYST",
+      "FINANCE_STAFF",
+    ].includes(r)
+  ) {
+    return "/finance";
+  }
+
+  if (
+    [
+      "MARKETING",
+      "MARKETING_ADMIN",
+      "MARKETING_MANAGER",
+      "MARKETING_STAFF",
+      "GROWTH",
+      "BRAND",
+      "DIGITAL_MARKETING",
+    ].includes(r)
+  ) {
+    return "/marketing";
+  }
+
   if (["HR", "HR_ADMIN", "HR_MANAGER"].includes(r)) {
     return "/admin-hr/employees";
   }
@@ -54,7 +84,9 @@ export function defaultPortalForRole(role?: string | null): string {
     return "/merchant";
   }
 
-  if (["WAREHOUSE", "WH", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF"].includes(r)) {
+  if (
+    ["WAREHOUSE", "WH", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF"].includes(r)
+  ) {
     return "/warehouse";
   }
 
