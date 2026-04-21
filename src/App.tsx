@@ -4,6 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+...
+<BrowserRouter>
+  <AppRoutes />
+</BrowserRouter>
 import {
   SidebarProvider,
   SidebarInset,
@@ -22,6 +26,7 @@ import Reporting from "./pages/Reporting";
 import Settings from "./pages/Settings";
 import SupervisorPortal from "./pages/SupervisorPortal";
 import DataEntryPortal from "./pages/DataEntryPortal";
+import MarketingPortal from "./pages/MarketingPortal";
 import CustomerServicePortal from "./pages/CustomerServicePortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import FinancialCenter from "./pages/FinancialCenter";
@@ -80,6 +85,7 @@ const App = () => (
 
                           <Route path="/supervisor/*" element={<SupervisorPortal />} />
                           <Route path="/data-entry/*" element={<DataEntryPortal />} />
+			<Route path="/marketing/*" element={<MarketingPortal />} />
                           <Route path="/customer-service/*" element={<CustomerServicePortal />} />
                           <Route path="/customer/*" element={<CustomerPortal />} />
                           <Route path="/merchant/*" element={<Merchants />} />
