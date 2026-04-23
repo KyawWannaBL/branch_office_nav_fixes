@@ -2,10 +2,8 @@ import { Link, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
-  AlertTriangle,
   BarChart3,
   CheckCircle2,
-  ClipboardList,
   Database,
   FileText,
   Files,
@@ -20,7 +18,6 @@ import {
 } from "lucide-react";
 
 import { useT } from "@/hooks/useT";
-import { canAccessPath } from "@/lib/roleAccess";
 import LanguageToggle from "@/components/LanguageToggle";
 
 type NavItem = {
@@ -48,7 +45,7 @@ const sections: NavSection[] = [
     items: [
       { title: "Delivery Workflow", path: "/delivery-workflow", icon: Truck },
       { title: "Delivery Dispatch", path: "/delivery-dispatch", icon: Truck },
-      { title: "Delivery Exceptions", path: "/delivery-exceptions", icon: AlertTriangle },
+      { title: "Delivery Exceptions", path: "/delivery-exceptions", icon: Truck },
       { title: "Pickup & Delivery Overview", path: "/pickup-delivery-overview", icon: Map },
       { title: "Pickup Control Center", path: "/pickup-control-center", icon: LocateFixed },
     ],
@@ -60,18 +57,15 @@ const sections: NavSection[] = [
       { title: "Finance Reconciliation", path: "/finance-reconciliation", icon: Wallet },
       { title: "Finance Export", path: "/finance-export-pack", icon: Database },
       { title: "Batch Drill-Down", path: "/finance-batch-drilldown", icon: Database },
-      { title: "Finance Exceptions", path: "/finance-exceptions", icon: AlertTriangle },
       { title: "Rider Settlement", path: "/rider-settlement-report", icon: Database },
+      { title: "Audit Logs", path: "/audit-logs", icon: ShieldCheck },
     ],
   },
   {
-    label: "Operations Control",
+    label: "Operations",
     items: [
       { title: "Operations Command", path: "/operations-command-center", icon: Activity },
       { title: "Executive Operations", path: "/executive-operations", icon: BarChart3 },
-      { title: "Audit Logs", path: "/audit-logs", icon: ShieldCheck },
-      { title: "Audit Anomalies", path: "/audit-anomalies", icon: ShieldCheck },
-      { title: "Daily Exception Summary", path: "/daily-exception-summary", icon: ClipboardList },
     ],
   },
   {
@@ -83,33 +77,13 @@ const sections: NavSection[] = [
       { title: "Tariff Master", path: "/master/tariffs", icon: Receipt },
     ],
   },
-  {
-    label: "Placeholders",
-    items: [
-      { title: "Admin HR", path: "/admin-hr", icon: ClipboardList },
-      { title: "Warehouse Inbound", path: "/warehouse/inbound", icon: ClipboardList },
-      { title: "Warehouse Staging", path: "/warehouse/staging", icon: ClipboardList },
-      { title: "Warehouse Storage", path: "/warehouse/storage", icon: ClipboardList },
-      { title: "Warehouse Outbound", path: "/warehouse/outbound", icon: ClipboardList },
-      { title: "Warehouse QR", path: "/warehouse/qr", icon: ClipboardList },
-    ],
-  },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const { t: tr } = useT();
 
-  const visibleSections = sections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => canAccessPath(item.path)),
-    }))
-    .filter((section) => section.items.length > 0);
-
   const isActive = (path: string) => {
-    if (path === "/dashboard") return location.pathname === "/dashboard";
-    if (path === "/home") return location.pathname === "/home";
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
@@ -118,7 +92,7 @@ export function Sidebar() {
       style={{
         width: 280,
         minWidth: 280,
-        height: "100vh",
+        height: "100%",
         overflowY: "auto",
         borderRight: "1px solid #e2e8f0",
         background: "#ffffff",
@@ -156,7 +130,7 @@ export function Sidebar() {
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        {visibleSections.map((section) => (
+        {sections.map((section) => (
           <div key={section.label}>
             <div
               style={{
@@ -191,7 +165,6 @@ export function Sidebar() {
                       background: active ? "#0f766e" : "transparent",
                       color: active ? "#ffffff" : "#0f172a",
                       fontWeight: 700,
-                      transition: "all 0.15s ease",
                     }}
                   >
                     <Icon size={16} />
