@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { readApiJson } from "@/lib/readApiJson";
 import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { translateMessage } from "@/lib/translateMessage";
@@ -26,6 +26,53 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
+const filterLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: ".08em",
+  color: "#64748b",
+  marginBottom: 6,
+};
+
+const th: React.CSSProperties = {
+  position: "sticky",
+  top: 0,
+  background: "#f8fafc",
+  textAlign: "left",
+  padding: "10px 12px",
+  borderBottom: "1px solid #dbe4ee",
+  fontWeight: 800,
+  color: "#334155",
+};
+
+const td: React.CSSProperties = {
+  padding: "10px 12px",
+  borderBottom: "1px solid #e2e8f0",
+  color: "#334155",
+  verticalAlign: "top",
+};
+
+const primaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f766e",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f2f5c",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
 function safe(v: any, fb = "-") {
   return v === null || v === undefined || v === "" ? fb : String(v);
 }
@@ -37,6 +84,47 @@ function pretty(v: any) {
   } catch {
     return String(v);
   }
+}
+
+function normalizeError(error: any, fallback: string) {
+  const message = String(error?.message || fallback);
+  if (/Unexpected token .* valid JSON/i.test(message)) {
+    return "Server returned an invalid response";
+  }
+  return message;
+}
+
+function summarize(rows: any[]) {
+  const actors = new Set(rows.map((x) => x.actor_email || x.actor_name || "").filter(Boolean));
+  const actions = new Set(rows.map((x) => x.action || "").filter(Boolean));
+  const resources = new Set(rows.map((x) => x.resource_type || "").filter(Boolean));
+
+  return {
+    total_logs: rows.length,
+    unique_actors: actors.size,
+    unique_actions: actions.size,
+    unique_resources: resources.size,
+  };
+}
+
+async function fetchAuditPayload(qs: URLSearchParams) {
+  const urls = [
+    `/api/v1/audit/logs?${qs.toString()}`,
+    `/api/system/audit-logs?${qs.toString()}`,
+  ];
+
+  let lastError: any = null;
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      return await readApiJson(res);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Failed to load audit logs");
 }
 
 export default function AuditLogViewer() {
@@ -88,9 +176,7 @@ export default function AuditLogViewer() {
     });
 
     refreshPresets();
-    if (saved?.id) {
-      setSelectedPresetId(saved.id);
-    }
+    if (saved?.id) setSelectedPresetId(saved.id);
     setMessage(`Action completed: ${name}`);
   }
 
@@ -116,6 +202,7 @@ export default function AuditLogViewer() {
     if (dateFrom) qs.set("date_from", dateFrom);
     if (dateTo) qs.set("date_to", dateTo);
     qs.set("limit", "5000");
+
     window.open(`/api/v1/audit/export?${qs.toString()}`, "_blank", "noopener,noreferrer");
   }
 
@@ -130,16 +217,13 @@ export default function AuditLogViewer() {
       if (dateTo) qs.set("date_to", dateTo);
       qs.set("limit", "500");
 
-      const res = await fetch(`/api/v1/audit/logs?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load");
-
+      const data = await fetchAuditPayload(qs);
       const list = Array.isArray(data?.data) ? data.data : [];
       setRows(list);
-      setSummary(data?.summary || null);
+      setSummary(data?.summary || summarize(list));
       setSelected(list[0] || null);
     } catch (error: any) {
-      setMessage(error?.message || "Failed to load");
+      setMessage(normalizeError(error, "Failed to load"));
       setRows([]);
       setSelected(null);
       setSummary(null);
@@ -157,9 +241,29 @@ export default function AuditLogViewer() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section style={{ ...card, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }}>
+      <section
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 18,
+          alignItems: "flex-start",
+        }}
+      >
         <div>
-          <div style={{ display: "inline-flex", padding: "8px 12px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".12em",
+            }}
+          >
             {tr("Audit Logs")}
           </div>
           <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
@@ -172,7 +276,17 @@ export default function AuditLogViewer() {
       </section>
 
       {message ? (
-        <div style={{ border: "1px solid #a5f3fc", background: "#ecfeff", color: "#0f766e", padding: "12px 14px", borderRadius: 16, fontSize: 13, fontWeight: 700 }}>
+        <div
+          style={{
+            border: "1px solid #a5f3fc",
+            background: "#ecfeff",
+            color: "#0f766e",
+            padding: "12px 14px",
+            borderRadius: 16,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
           {translateMessage(lang, message)}
         </div>
       ) : null}
@@ -184,6 +298,7 @@ export default function AuditLogViewer() {
           {presets.map((preset) => (
             <button
               key={preset.id}
+              type="button"
               onClick={() => applyPreset(preset)}
               style={{
                 border: "none",
@@ -200,7 +315,14 @@ export default function AuditLogViewer() {
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px,1fr) auto auto", gap: 12, alignItems: "end" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(220px,1fr) auto auto",
+            gap: 12,
+            alignItems: "end",
+          }}
+        >
           <div>
             <div style={filterLabel}>{tr("Preset Name")}</div>
             <input
@@ -211,12 +333,24 @@ export default function AuditLogViewer() {
             />
           </div>
 
-          <button style={primaryBtn} onClick={saveCurrentPreset}>{tr("Save Preset")}</button>
-          <button style={secondaryBtn} onClick={deleteCurrentPreset}>{tr("Delete Preset")}</button>
+          <button type="button" style={primaryBtn} onClick={saveCurrentPreset}>
+            {tr("Save Preset")}
+          </button>
+          <button type="button" style={secondaryBtn} onClick={deleteCurrentPreset}>
+            {tr("Delete Preset")}
+          </button>
         </div>
       </section>
 
-      <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto", gap: 12, alignItems: "end" }}>
+      <section
+        style={{
+          ...card,
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto",
+          gap: 12,
+          alignItems: "end",
+        }}
+      >
         <div>
           <div style={filterLabel}>{tr("Actor")}</div>
           <input style={inputStyle} placeholder={tr("Actor")} value={actor} onChange={(e) => setActor(e.target.value)} />
@@ -238,8 +372,12 @@ export default function AuditLogViewer() {
           <input style={inputStyle} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={primaryBtn} onClick={loadData}>{tr("Apply")}</button>
-          <button style={secondaryBtn} onClick={exportCsv}>{tr("Export CSV")}</button>
+          <button type="button" style={primaryBtn} onClick={loadData}>
+            {tr("Apply")}
+          </button>
+          <button type="button" style={secondaryBtn} onClick={exportCsv}>
+            {tr("Export CSV")}
+          </button>
         </div>
       </section>
 
@@ -252,7 +390,10 @@ export default function AuditLogViewer() {
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(420px,1fr) minmax(0,1.15fr)", gap: 18 }}>
         <section style={card}>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", marginBottom: 14 }}>{tr("Log Entries")}</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", marginBottom: 14 }}>
+            {tr("Log Entries")}
+          </div>
+
           <div style={{ overflow: "auto", maxHeight: 760 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
@@ -297,7 +438,9 @@ export default function AuditLogViewer() {
         </section>
 
         <section style={{ ...card, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Selected Log Detail")}</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>
+            {tr("Selected Log Detail")}
+          </div>
 
           {selected ? (
             <>
@@ -325,9 +468,21 @@ export default function AuditLogViewer() {
 
 function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div style={{ ...card, padding: 14, background: strong ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)" : "#fff" }}>
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>{label}</div>
-      <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>{value}</div>
+    <div
+      style={{
+        ...card,
+        padding: 14,
+        background: strong
+          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
+          : "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -335,57 +490,24 @@ function Metric({ label, value, strong = false }: { label: string; value: string
 function JsonPanel({ title, value }: { title: string; value: string }) {
   return (
     <div style={{ border: "1px solid #dbe4ee", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-      <div style={{ padding: "12px 14px", fontWeight: 800, borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>{title}</div>
-      <pre style={{ margin: 0, padding: 14, maxHeight: 220, overflow: "auto", fontSize: 12, lineHeight: 1.55, color: "#334155", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+      <div style={{ padding: "12px 14px", fontWeight: 800, borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+        {title}
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: 14,
+          maxHeight: 220,
+          overflow: "auto",
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: "#334155",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
         {value || "-"}
       </pre>
     </div>
   );
 }
-
-const filterLabel: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: ".08em",
-  color: "#64748b",
-  marginBottom: 6,
-};
-
-const th: React.CSSProperties = {
-  position: "sticky",
-  top: 0,
-  background: "#f8fafc",
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "1px solid #dbe4ee",
-  fontWeight: 800,
-  color: "#334155",
-};
-
-const td: React.CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #e2e8f0",
-  color: "#334155",
-  verticalAlign: "top",
-};
-
-const primaryBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 12,
-  background: "#0f766e",
-  color: "#fff",
-  padding: "12px 16px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondaryBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 12,
-  background: "#0f2f5c",
-  color: "#fff",
-  padding: "12px 16px",
-  fontWeight: 800,
-  cursor: "pointer",
-};

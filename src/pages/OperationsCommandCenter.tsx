@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { readApiJson } from "@/lib/readApiJson";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useT } from "@/hooks/useT";
@@ -15,11 +15,21 @@ const card: React.CSSProperties = {
 
 function money(v: any) {
   const n = Number(v ?? 0);
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
+    Number.isFinite(n) ? n : 0
+  );
 }
 
 function safe(v: any, fb = "-") {
   return v === null || v === undefined || v === "" ? fb : String(v);
+}
+
+function normalizeError(error: any, fallback: string) {
+  const message = String(error?.message || fallback);
+  if (/Unexpected token .* valid JSON/i.test(message)) {
+    return "Server returned an invalid response";
+  }
+  return message;
 }
 
 export default function OperationsCommandCenter() {
@@ -29,14 +39,26 @@ export default function OperationsCommandCenter() {
 
   async function loadData() {
     setMessage("");
-    try {
-      const res = await fetch("/api/v1/ops/command-center");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load");
-      setPayload(data.data);
-    } catch (error: any) {
-      setMessage(error?.message || "Failed to load");
+
+    const urls = [
+      "/api/v1/operations/command-center",
+      "/api/v1/command-center",
+    ];
+
+    let lastError: any = null;
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        const data = await readApiJson(res);
+        setPayload(data.data);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    setMessage(normalizeError(lastError, "Failed to load"));
   }
 
   useEffect(() => {
@@ -52,9 +74,29 @@ export default function OperationsCommandCenter() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section style={{ ...card, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }}>
+      <section
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 18,
+          alignItems: "flex-start",
+        }}
+      >
         <div>
-          <div style={{ display: "inline-flex", padding: "8px 12px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".12em",
+            }}
+          >
             {tr("Operations Command")}
           </div>
           <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
@@ -74,7 +116,17 @@ export default function OperationsCommandCenter() {
       </section>
 
       {message ? (
-        <div style={{ border: "1px solid #a5f3fc", background: "#ecfeff", color: "#0f766e", padding: "12px 14px", borderRadius: 16, fontSize: 13, fontWeight: 700 }}>
+        <div
+          style={{
+            border: "1px solid #a5f3fc",
+            background: "#ecfeff",
+            color: "#0f766e",
+            padding: "12px 14px",
+            borderRadius: 16,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
           {translateMessage(lang, message)}
         </div>
       ) : null}
@@ -131,7 +183,17 @@ export default function OperationsCommandCenter() {
         <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <Panel title={tr("Top Townships")}>
             {topTownships.length ? topTownships.map((row: any) => (
-              <div key={row.township} style={{ display: "flex", justifyContent: "space-between", gap: 10, border: "1px solid #dbe4ee", borderRadius: 14, padding: 12 }}>
+              <div
+                key={row.township}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  border: "1px solid #dbe4ee",
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              >
                 <strong>{safe(row.township)}</strong>
                 <span>{safe(row.total_ways)}</span>
               </div>
@@ -152,9 +214,21 @@ export default function OperationsCommandCenter() {
 
 function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div style={{ ...card, padding: 14, background: strong ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)" : "#fff" }}>
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>{label}</div>
-      <div style={{ marginTop: 10, fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{value}</div>
+    <div
+      style={{
+        ...card,
+        padding: 14,
+        background: strong
+          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
+          : "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+        {value}
+      </div>
     </div>
   );
 }
