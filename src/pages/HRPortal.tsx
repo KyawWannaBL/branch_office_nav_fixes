@@ -1,410 +1,648 @@
-// src/pages/HRPortal.tsx
-// @ts-nocheck
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { RefreshCw, Save } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useLanguage } from "@/hooks/useLanguage";
-import { getPortalBanner } from "@/lib/portalBanner";
-import { safeText } from "@/lib/displayValue";
-import { PortalBanner } from "@/components/portal/PortalBanner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import {
+  BadgeCheck,
+  BriefcaseBusiness,
+  ClipboardCheck,
+  FileText,
+  RefreshCw,
+  Shield,
+  Users,
+} from "lucide-react";
+import { readApiJson } from "@/lib/readApiJson";
+import { useT } from "@/hooks/useT";
 
-function tt(language: string, en: string, mm: string) {
-  return language === "mm" ? mm : en;
+type AuditRow = Record<string, any>;
+
+const card: React.CSSProperties = {
+  border: "1px solid #dbe4ee",
+  borderRadius: 22,
+  background: "#fff",
+  padding: 18,
+  boxShadow: "0 10px 24px rgba(15,23,42,.04)",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: "11px 12px",
+  fontSize: 14,
+  fontFamily: "inherit",
+};
+
+const primaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f766e",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f2f5c",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+function safe(v: any, fb = "-") {
+  return v === null || v === undefined || v === "" ? fb : String(v);
 }
 
-function currentView(pathname: string) {
-  if (pathname.includes("/attendance")) return "attendance";
-  if (pathname.includes("/leave")) return "leave";
-  return "employees";
-}
-
-function labelize(value: unknown) {
-  return String(value || "unknown")
-    .replace(/[_-]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(d);
-}
-
-async function safeLoad(table: string, orderColumn: string, ascending = false) {
-  const { data, error } = await supabase.from(table).select("*").order(orderColumn, { ascending });
-  if (error) {
-    console.warn(`[HRPortal] ${table}`, error.message);
-    return [];
+function normalizeError(error: any, fallback: string) {
+  const message = String(error?.message || fallback);
+  if (/Unexpected token .* valid JSON/i.test(message)) {
+    return "Server returned an invalid response";
   }
-  return data || [];
+  return message;
+}
+
+function pretty(v: any) {
+  if (v === null || v === undefined) return "-";
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function KpiCard({
+  icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone?: "default" | "good" | "warn" | "info";
+}) {
+  const bg =
+    tone === "good"
+      ? "linear-gradient(135deg,#ecfdf5 0%,#f0fdf4 100%)"
+      : tone === "warn"
+        ? "linear-gradient(135deg,#fff7ed 0%,#fef3c7 100%)"
+        : tone === "info"
+          ? "linear-gradient(135deg,#eff6ff 0%,#eef2ff 100%)"
+          : "#fff";
+
+  return (
+    <div style={{ ...card, background: bg, padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+          {label}
+        </div>
+        <div style={{ color: "#0f172a" }}>{icon}</div>
+      </div>
+      <div style={{ marginTop: 12, fontSize: 28, fontWeight: 900, color: "#0f172a" }}>{value}</div>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section style={card}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{title}</div>
+        {action}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
+    </section>
+  );
+}
+
+function RowCard({
+  title,
+  line1,
+  line2,
+  badge,
+  onClick,
+  active = false,
+}: {
+  title: string;
+  line1: string;
+  line2?: string;
+  badge?: string;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const body = (
+    <div
+      style={{
+        border: active ? "1px solid #93c5fd" : "1px solid #dbe4ee",
+        borderRadius: 16,
+        padding: 14,
+        background: active ? "#eff6ff" : "#f8fafc",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <strong style={{ color: "#0f172a" }}>{title}</strong>
+        {badge ? (
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#475569" }}>
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <div style={{ marginTop: 6, color: "#334155", fontSize: 13 }}>{line1}</div>
+      {line2 ? <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>{line2}</div> : null}
+    </div>
+  );
+
+  if (!onClick) return body;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        textAlign: "left",
+        cursor: "pointer",
+      }}
+    >
+      {body}
+    </button>
+  );
+}
+
+function ActionLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        textDecoration: "none",
+        border: "1px solid #dbe4ee",
+        borderRadius: 14,
+        padding: 12,
+        color: "#0f172a",
+        fontWeight: 700,
+        background: "#fff",
+      }}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #dbe4ee",
+        borderRadius: 16,
+        padding: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function isHrLike(row: AuditRow) {
+  const text = [
+    row.action,
+    row.resource_type,
+    row.resource_id,
+    row.target_status,
+    row.actor_role,
+    row.actor_name,
+    row.actor_email,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    text.includes("hr") ||
+    text.includes("employee") ||
+    text.includes("approval") ||
+    text.includes("leave") ||
+    text.includes("payroll") ||
+    text.includes("role") ||
+    text.includes("permission") ||
+    text.includes("admin")
+  );
 }
 
 export default function HRPortal() {
-  const { language } = useLanguage();
+  const { t: tr } = useT();
   const location = useLocation();
-  const navigate = useNavigate();
 
-  const [view, setView] = useState(currentView(location.pathname));
   const [loading, setLoading] = useState(true);
-  const [staffRows, setStaffRows] = useState<any[]>([]);
-  const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
-  const [leaveRows, setLeaveRows] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [logs, setLogs] = useState<AuditRow[]>([]);
+  const [selected, setSelected] = useState<AuditRow | null>(null);
 
-  const [attendanceForm, setAttendanceForm] = useState({
-    staff_id: "",
-    attendance_date: new Date().toISOString().slice(0, 10),
-    status: "present",
-    notes: "",
-  });
-
-  const [leaveForm, setLeaveForm] = useState({
-    staff_id: "",
-    leave_type: "annual",
-    start_date: "",
-    end_date: "",
-    reason: "",
-  });
-
-  useEffect(() => {
-    setView(currentView(location.pathname));
+  const activeSection = useMemo(() => {
+    if (location.pathname.includes("/admin-hr/employees")) return "Employees";
+    if (location.pathname.includes("/admin-hr/approvals")) return "Approvals";
+    if (location.pathname.includes("/admin-hr/admin")) return "Admin Controls";
+    if (location.pathname.includes("/admin-hr/reports")) return "Reports";
+    return "Overview";
   }, [location.pathname]);
 
-  async function loadData() {
+  async function loadPortal() {
     setLoading(true);
-    setError(null);
+    setMessage("");
 
-    try {
-      const [staffData, attData, leaveData] = await Promise.all([
-        safeLoad("staff_master", "full_name", true),
-        safeLoad("hr_attendance", "attendance_date", false),
-        safeLoad("hr_leave_requests", "created_at", false),
-      ]);
+    const urls = [
+      "/api/v1/audit/logs?limit=500",
+      "/api/system/audit-logs?limit=500",
+    ];
 
-      setStaffRows(staffData);
-      setAttendanceRows(attData);
-      setLeaveRows(leaveData);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load HR data");
-      setStaffRows([]);
-      setAttendanceRows([]);
-      setLeaveRows([]);
-    } finally {
-      setLoading(false);
+    let loaded: any = null;
+    let lastError: any = null;
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        loaded = await readApiJson(res);
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    if (!loaded) {
+      setMessage(normalizeError(lastError, "Failed to load HR portal"));
+      setLogs([]);
+      setSelected(null);
+      setLoading(false);
+      return;
+    }
+
+    const allRows = Array.isArray(loaded?.data) ? loaded.data : [];
+    const hrRows = allRows.filter(isHrLike);
+
+    setLogs(hrRows);
+    setSelected((prev) => {
+      if (!hrRows.length) return null;
+      if (!prev) return hrRows[0];
+      return hrRows.find((x: AuditRow) => x.id === prev.id) || hrRows[0];
+    });
+    setLoading(false);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadPortal();
   }, []);
 
-  const staffMap = useMemo(() => new Map(staffRows.map((r: any) => [r.id, r])), [staffRows]);
+  const filteredLogs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return logs;
 
-  async function saveAttendance() {
-    setError(null);
-    const { error } = await supabase.from("hr_attendance").upsert({
-      staff_id: attendanceForm.staff_id,
-      attendance_date: attendanceForm.attendance_date,
-      status: attendanceForm.status,
-      check_in_at: new Date().toISOString(),
-      notes: attendanceForm.notes || null,
-      updated_at: new Date().toISOString(),
-    });
+    return logs.filter((row) =>
+      [
+        row.actor_name,
+        row.actor_email,
+        row.actor_role,
+        row.action,
+        row.resource_type,
+        row.resource_id,
+        row.target_status,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [logs, query]);
 
-    if (error) {
-      setError(error.message);
-      return;
+  const stats = useMemo(() => {
+    const uniqueActors = new Set(
+      logs
+        .map((x) => x.actor_email || x.actor_name)
+        .filter(Boolean)
+    ).size;
+
+    const approvals = logs.filter((x) =>
+      String(x.action || "").toLowerCase().includes("approval")
+    ).length;
+
+    const roleChanges = logs.filter((x) => {
+      const s = String(x.action || "").toLowerCase();
+      return s.includes("role") || s.includes("permission");
+    }).length;
+
+    const employeeActions = logs.filter((x) => {
+      const s = `${x.action || ""} ${x.resource_type || ""}`.toLowerCase();
+      return s.includes("employee") || s.includes("leave") || s.includes("payroll");
+    }).length;
+
+    const resourceTypes = new Set(
+      logs.map((x) => x.resource_type).filter(Boolean)
+    ).size;
+
+    const pendingLike = logs.filter((x) =>
+      String(x.target_status || "").toLowerCase().includes("pending")
+    ).length;
+
+    return {
+      totalLogs: logs.length,
+      uniqueActors,
+      approvals,
+      roleChanges,
+      employeeActions,
+      resourceTypes,
+      pendingLike,
+    };
+  }, [logs]);
+
+  const roleSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const row of logs) {
+      const role = String(row.actor_role || "Unspecified").trim() || "Unspecified";
+      counts.set(role, (counts.get(role) || 0) + 1);
     }
 
-    setAttendanceForm({
-      staff_id: "",
-      attendance_date: new Date().toISOString().slice(0, 10),
-      status: "present",
-      notes: "",
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([role, total]) => ({ role, total }));
+  }, [logs]);
+
+  const approvalWatchlist = useMemo(() => {
+    const rows = logs.filter((x) => {
+      const text = `${x.action || ""} ${x.target_status || ""} ${x.resource_type || ""}`.toLowerCase();
+      return text.includes("approval") || text.includes("pending");
     });
-
-    await loadData();
-  }
-
-  async function saveLeave() {
-    setError(null);
-    const { error } = await supabase.from("hr_leave_requests").insert({
-      staff_id: leaveForm.staff_id,
-      leave_type: leaveForm.leave_type,
-      start_date: leaveForm.start_date,
-      end_date: leaveForm.end_date,
-      reason: leaveForm.reason,
-      status: "pending",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    setLeaveForm({
-      staff_id: "",
-      leave_type: "annual",
-      start_date: "",
-      end_date: "",
-      reason: "",
-    });
-
-    await loadData();
-  }
-
-  async function setLeaveStatus(id: string, status: "approved" | "rejected") {
-    setError(null);
-    const { error } = await supabase
-      .from("hr_leave_requests")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    await loadData();
-  }
+    return rows.length ? rows.slice(0, 8) : logs.slice(0, 8);
+  }, [logs]);
 
   return (
-    <div className="space-y-6">
-      <PortalBanner
-        image={getPortalBanner(view === "attendance" ? "hr_attendance" : view === "leave" ? "hr_leave" : "hr")}
-        title={tt(language, "HR Portal", "HR Portal")}
-        subtitle={tt(language, "Employees, attendance, and leave requests.", "ဝန်ထမ်း၊ attendance နှင့် leave request များ")}
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <section
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 18,
+          alignItems: "flex-start",
+        }}
       >
-        <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {tt(language, "Refresh", "ပြန်လည်ရယူမည်")}
-        </Button>
-      </PortalBanner>
+        <div>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".12em",
+            }}
+          >
+            {tr("Human Resources")}
+          </div>
+          <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
+            {tr("HR Portal")}
+          </h1>
+          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
+            {tr("Monitor HR-related audit activity, approvals, admin actions, and workforce governance from one secure portal.")}
+          </p>
+        </div>
 
-      {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-          {error}
+        <button
+          type="button"
+          onClick={() => void loadPortal()}
+          style={{
+            ...secondaryBtn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <RefreshCw size={16} />
+          {tr("Refresh")}
+        </button>
+      </section>
+
+      {message ? (
+        <div
+          style={{
+            border: "1px solid #a5f3fc",
+            background: "#ecfeff",
+            color: "#0f766e",
+            padding: "12px 14px",
+            borderRadius: 16,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          {message}
         </div>
       ) : null}
 
-      <div className="grid gap-2 rounded-2xl bg-muted p-1 md:grid-cols-3">
-        <button
-          className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === "employees" ? "bg-background shadow-sm" : ""}`}
-          onClick={() => navigate("/hr/employees")}
-        >
-          {tt(language, "Employees", "Employees")}
-        </button>
-        <button
-          className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === "attendance" ? "bg-background shadow-sm" : ""}`}
-          onClick={() => navigate("/hr/attendance")}
-        >
-          {tt(language, "Attendance", "Attendance")}
-        </button>
-        <button
-          className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === "leave" ? "bg-background shadow-sm" : ""}`}
-          onClick={() => navigate("/hr/leave")}
-        >
-          {tt(language, "Leave Requests", "Leave Requests")}
-        </button>
-      </div>
+      <section
+        style={{
+          ...card,
+          display: "grid",
+          gridTemplateColumns: "minmax(320px,1fr) auto auto",
+          gap: 12,
+          alignItems: "end",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
+            {tr("HR Activity Search")}
+          </div>
+          <input
+            style={inputStyle}
+            placeholder={tr("Search actor, role, action, resource, or status")}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
 
-      {view === "employees" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{tt(language, "Employee Directory", "Employee Directory")}</CardTitle>
-            <CardDescription>{tt(language, "Live staff master data for HR visibility.", "HR အတွက် live staff master data")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {staffRows.map((row: any) => (
-              <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border p-4">
-                <div>
-                  <div className="font-semibold">{row.full_name}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {safeText(row.staff_code)} · {safeText(row.staff_type)} · {safeText(row.role_name)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {safeText(row.phone)} · {safeText(row.email)}
-                  </div>
-                </div>
-                <Badge>{row.is_active ? tt(language, "Active", "Active") : tt(language, "Inactive", "Inactive")}</Badge>
+        <button type="button" onClick={() => setQuery(query)} style={primaryBtn}>
+          {tr("Filter")}
+        </button>
+
+        <div
+          style={{
+            borderRadius: 12,
+            background: "#f8fafc",
+            padding: "12px 16px",
+            fontWeight: 800,
+            color: "#334155",
+          }}
+        >
+          {tr("Section")}: {activeSection}
+        </div>
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+        <KpiCard icon={<Users size={18} />} label={tr("HR/Admin Logs")} value={String(stats.totalLogs)} tone="info" />
+        <KpiCard icon={<BadgeCheck size={18} />} label={tr("Approval Actions")} value={String(stats.approvals)} tone="good" />
+        <KpiCard icon={<Shield size={18} />} label={tr("Role / Permission Changes")} value={String(stats.roleChanges)} tone="warn" />
+        <KpiCard icon={<BriefcaseBusiness size={18} />} label={tr("Unique Actors")} value={String(stats.uniqueActors)} />
+        <KpiCard icon={<ClipboardCheck size={18} />} label={tr("Employee Actions")} value={String(stats.employeeActions)} />
+        <KpiCard icon={<FileText size={18} />} label={tr("Pending-Like Items")} value={String(stats.pendingLike)} tone="warn" />
+        <KpiCard icon={<Shield size={18} />} label={tr("Resource Types")} value={String(stats.resourceTypes)} tone="info" />
+        <KpiCard icon={<Users size={18} />} label={tr("Filtered Results")} value={String(filteredLogs.length)} />
+      </section>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 18 }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <Panel
+            title={tr("Recent HR / Admin Activity")}
+            action={
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
+                {filteredLogs.length} row(s)
+              </span>
+            }
+          >
+            {filteredLogs.length ? (
+              filteredLogs.slice(0, 12).map((row: AuditRow) => (
+                <RowCard
+                  key={safe(row.id)}
+                  active={selected?.id === row.id}
+                  onClick={() => setSelected(row)}
+                  title={safe(row.action)}
+                  badge={safe(row.target_status, "")}
+                  line1={`${safe(row.actor_name)} · ${safe(row.actor_role)}`}
+                  line2={`${safe(row.resource_type)} · ${safe(row.resource_id)} · ${safe(row.occurred_at)}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading HR portal...") : tr("No HR activity records found.")}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            )}
+          </Panel>
 
-      {view === "attendance" && (
-        <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card>
-            <CardHeader>
-              <CardTitle>{tt(language, "Record Attendance", "Attendance မှတ်တမ်းတင်ရန်")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <select
-                className="h-10 w-full rounded-md border px-3 text-sm"
-                value={attendanceForm.staff_id}
-                onChange={(e) => setAttendanceForm({ ...attendanceForm, staff_id: e.target.value })}
-              >
-                <option value="">{tt(language, "Select Staff", "Staff ရွေးပါ")}</option>
-                {staffRows.map((row: any) => (
-                  <option key={row.id} value={row.id}>
-                    {row.full_name}
-                  </option>
-                ))}
-              </select>
+          <Panel title={tr("Role Activity Summary")}>
+            {roleSummary.length ? (
+              roleSummary.map((row) => (
+                <RowCard
+                  key={row.role}
+                  title={row.role}
+                  line1={`${tr("Actions")}: ${row.total}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading HR portal...") : tr("No role activity summary available.")}
+              </div>
+            )}
+          </Panel>
+        </section>
 
-              <Input
-                type="date"
-                value={attendanceForm.attendance_date}
-                onChange={(e) => setAttendanceForm({ ...attendanceForm, attendance_date: e.target.value })}
-              />
-
-              <select
-                className="h-10 w-full rounded-md border px-3 text-sm"
-                value={attendanceForm.status}
-                onChange={(e) => setAttendanceForm({ ...attendanceForm, status: e.target.value })}
-              >
-                <option value="present">Present</option>
-                <option value="late">Late</option>
-                <option value="absent">Absent</option>
-                <option value="leave">Leave</option>
-                <option value="remote">Remote</option>
-              </select>
-
-              <textarea
-                className="min-h-[100px] w-full rounded-md border p-3 text-sm"
-                value={attendanceForm.notes}
-                onChange={(e) => setAttendanceForm({ ...attendanceForm, notes: e.target.value })}
-                placeholder={tt(language, "Notes", "မှတ်ချက်")}
-              />
-
-              <Button onClick={() => void saveAttendance()}>
-                <Save className="mr-2 h-4 w-4" />
-                {tt(language, "Save Attendance", "Attendance သိမ်းမည်")}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{tt(language, "Attendance Ledger", "Attendance Ledger")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {attendanceRows.map((row: any) => (
-                <div key={row.id} className="rounded-xl border p-4">
-                  <div className="font-semibold">{staffMap.get(row.staff_id)?.full_name || "Unknown staff"}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {row.attendance_date || "—"} · {labelize(row.status)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {fmtDate(row.check_in_at)} → {fmtDate(row.check_out_at)}
-                  </div>
+        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <Panel title={tr("Selected Activity Detail")}>
+            {selected ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                  <DetailMetric label={tr("Occurred At")} value={safe(selected.occurred_at)} />
+                  <DetailMetric label={tr("Actor")} value={safe(selected.actor_name)} />
+                  <DetailMetric label={tr("Actor Email")} value={safe(selected.actor_email)} />
+                  <DetailMetric label={tr("Role")} value={safe(selected.actor_role)} />
+                  <DetailMetric label={tr("Action")} value={safe(selected.action)} />
+                  <DetailMetric label={tr("Resource Type")} value={safe(selected.resource_type)} />
+                  <DetailMetric label={tr("Resource ID")} value={safe(selected.resource_id)} />
+                  <DetailMetric label={tr("Target Status")} value={safe(selected.target_status)} />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
 
-      {view === "leave" && (
-        <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card>
-            <CardHeader>
-              <CardTitle>{tt(language, "Create Leave Request", "Leave Request ဖန်တီးရန်")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <select
-                className="h-10 w-full rounded-md border px-3 text-sm"
-                value={leaveForm.staff_id}
-                onChange={(e) => setLeaveForm({ ...leaveForm, staff_id: e.target.value })}
-              >
-                <option value="">{tt(language, "Select Staff", "Staff ရွေးပါ")}</option>
-                {staffRows.map((row: any) => (
-                  <option key={row.id} value={row.id}>
-                    {row.full_name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="h-10 w-full rounded-md border px-3 text-sm"
-                value={leaveForm.leave_type}
-                onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
-              >
-                <option value="annual">Annual</option>
-                <option value="medical">Medical</option>
-                <option value="casual">Casual</option>
-                <option value="maternity">Maternity</option>
-                <option value="unpaid">Unpaid</option>
-                <option value="other">Other</option>
-              </select>
-
-              <Input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} />
-              <Input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} />
-
-              <textarea
-                className="min-h-[100px] w-full rounded-md border p-3 text-sm"
-                value={leaveForm.reason}
-                onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                placeholder={tt(language, "Reason", "အကြောင်းပြချက်")}
-              />
-
-              <Button onClick={() => void saveLeave()}>
-                <Save className="mr-2 h-4 w-4" />
-                {tt(language, "Save Request", "Request သိမ်းမည်")}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{tt(language, "Leave Queue", "Leave Queue")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {leaveRows.map((row: any) => (
-                <div key={row.id} className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{staffMap.get(row.staff_id)?.full_name || "Unknown staff"}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {labelize(row.leave_type)} · {row.start_date} → {row.end_date}
-                      </div>
-                      <div className="text-sm text-muted-foreground">{safeText(row.reason)}</div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge>{labelize(row.status)}</Badge>
-                      {row.status === "pending" ? (
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => void setLeaveStatus(row.id, "approved")}>
-                            {tt(language, "Approve", "ခွင့်ပြုမည်")}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => void setLeaveStatus(row.id, "rejected")}>
-                            {tt(language, "Reject", "ငြင်းပယ်မည်")}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
+                <div
+                  style={{
+                    border: "1px solid #dbe4ee",
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      fontWeight: 800,
+                      borderBottom: "1px solid #e2e8f0",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    {tr("Payload")}
                   </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 14,
+                      maxHeight: 240,
+                      overflow: "auto",
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      color: "#334155",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {pretty(selected.payload)}
+                  </pre>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                  <ActionLink to="/audit-logs" label={tr("Open Audit Logs")} />
+                  <ActionLink to="/admin-hr/employees" label={tr("Employees")} />
+                  <ActionLink to="/admin-hr/approvals" label={tr("Approvals")} />
+                  <ActionLink to="/admin-hr/reports" label={tr("Reports")} />
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading HR portal...") : tr("Select an HR activity to view details.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Approval Watchlist")}>
+            {approvalWatchlist.length ? (
+              approvalWatchlist.map((row: AuditRow) => (
+                <RowCard
+                  key={`watch-${safe(row.id)}`}
+                  title={safe(row.action)}
+                  badge={safe(row.target_status, "")}
+                  line1={`${safe(row.actor_name)} · ${safe(row.actor_role)}`}
+                  line2={`${safe(row.resource_type)} · ${safe(row.occurred_at)}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading HR portal...") : tr("No approval watchlist items found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Quick Actions")}>
+            <ActionLink to="/admin-hr/employees" label={tr("Open Employees")} />
+            <ActionLink to="/admin-hr/approvals" label={tr("Open Approvals")} />
+            <ActionLink to="/admin-hr/admin" label={tr("Open Admin Controls")} />
+            <ActionLink to="/admin-hr/reports" label={tr("Open Reports")} />
+            <ActionLink to="/audit-logs" label={tr("Open Audit Logs")} />
+          </Panel>
+        </section>
+      </div>
     </div>
   );
 }

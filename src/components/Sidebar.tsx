@@ -14,7 +14,7 @@ import {
   Receipt,
   ShieldCheck,
   Truck,
-  Wallet, Headset, Store, Megaphone, UserRound } from "lucide-react";
+  Wallet, Headset, Store, Megaphone, UserRound, Users } from "lucide-react";
 
 import { useT } from "@/hooks/useT";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -42,6 +42,7 @@ const sections: NavSection[] = [
       { title: "Marketing", path: "/marketing", icon: Megaphone },
       { title: "Merchant", path: "/merchant", icon: Store },
       { title: "Customer", path: "/customer", icon: UserRound },
+      { title: "HR Portal", path: "/admin-hr", icon: Users },
     ],
   },
   {

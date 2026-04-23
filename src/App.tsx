@@ -16,6 +16,7 @@ import CustomerServicePortal from "./pages/CustomerServicePortal";
 import MarketingPortal from "./pages/MarketingPortal";
 import MerchantPortal from "./pages/MerchantPortal";
 import CustomerPortal from "./pages/CustomerPortal";
+import HRPortal from "./pages/HRPortal";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";
 import DeliveryExceptionCenter from "./pages/DeliveryExceptionCenter";
@@ -80,11 +81,11 @@ function PortalRoutes() {
           <Route path="/pickup-control-center" element={<PickupControlCenter />} />
           <Route path="/master/tariffs" element={<TariffMaster />} />
 
-          <Route path="/admin-hr" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/admin-hr/employees" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/admin-hr/approvals" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/admin-hr/admin" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/admin-hr/reports" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/admin-hr" element={<HRPortal />} />
+          <Route path="/admin-hr/employees" element={<HRPortal />} />
+          <Route path="/admin-hr/approvals" element={<HRPortal />} />
+          <Route path="/admin-hr/admin" element={<HRPortal />} />
+          <Route path="/admin-hr/reports" element={<HRPortal />} />
 
           <Route path="/warehouse" element={<Navigate to="/dashboard" replace />} />
           <Route path="/warehouse/inbound" element={<Navigate to="/dashboard" replace />} />
