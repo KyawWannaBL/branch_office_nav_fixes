@@ -11,6 +11,7 @@ import CreateDelivery from "./pages/CreateDelivery";
 import PickupRegistration from "./pages/PickupRegistration";
 import DeliveryRegistration from "./pages/DeliveryRegistration";
 import WayManagement from "./pages/WayManagement";
+import SupervisorPortal from "./pages/SupervisorPortal";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";
 import DeliveryExceptionCenter from "./pages/DeliveryExceptionCenter";
@@ -49,6 +50,7 @@ function PortalRoutes() {
           <Route path="/delivery-registration" element={<CreateDelivery />} />
 
           <Route path="/way-management" element={<WayManagement />} />
+                    <Route path="/supervisor" element={<SupervisorPortal />} />
           <Route path="/delivery-workflow" element={<DeliveryWorkflowOperations />} />
           <Route path="/delivery-dispatch" element={<DeliveryDispatchBoard />} />
           <Route path="/delivery-exceptions" element={<DeliveryExceptionCenter />} />
