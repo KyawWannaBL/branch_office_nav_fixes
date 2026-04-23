@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { readApiJson } from "@/lib/readApiJson";
 import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { translateMessage } from "@/lib/translateMessage";
@@ -91,10 +91,8 @@ export default function TariffMaster() {
       const qs = new URLSearchParams();
       if (search.trim()) qs.set("q", search.trim());
 
-      const res = await fetch(`/api/v1/master/tariffs?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load");
-
+    const res = await fetch("/api/...");
+    const data = await readApiJson(res);
       setRows(Array.isArray(data?.data) ? data.data : []);
     } catch (error: any) {
       setRows([]);

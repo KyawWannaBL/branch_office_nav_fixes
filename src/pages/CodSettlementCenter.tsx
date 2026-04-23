@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { readApiJson } from "@/lib/readApiJson";
 import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { statusText } from "@/lib/statusText";
@@ -54,9 +54,8 @@ export default function CodSettlementCenter() {
     const qs = new URLSearchParams();
     if (search) qs.set("q", search);
 
-    const res = await fetch(`/api/v1/cod-settlements?${qs.toString()}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Failed to load COD queue");
+  const res = await fetch("/api/...");
+  const data = await readApiJson(res);
     setQueue(Array.isArray(data?.data) ? data.data : []);
   }
 

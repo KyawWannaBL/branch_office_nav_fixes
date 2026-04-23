@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../_lib/serverSupabase";
+import { supabaseAdmin } from "../_lib/serverSupabase.ts";
 import { calculateDeliveryPricing } from "../_lib/deliveryPricing";
 
 function send(res: VercelResponse, status: number, payload: unknown) {

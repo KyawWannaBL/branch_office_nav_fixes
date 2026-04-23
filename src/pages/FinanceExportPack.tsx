@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
 import { appendActorQuery } from "@/lib/actorIdentity";
@@ -24,6 +23,8 @@ const inputStyle: React.CSSProperties = {
 export default function FinanceExportPack() {
   const { t: tr } = useT();
   const access = useRoleAccess();
+  const canExport = access?.can ? access.can("finance.export") : true;
+
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [riderName, setRiderName] = useState("");
@@ -40,40 +41,107 @@ export default function FinanceExportPack() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section style={{ ...card, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }}>
+      <section
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 18,
+          alignItems: "flex-start",
+        }}
+      >
         <div>
-          <div style={{ display: "inline-flex", padding: "8px 12px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".12em",
+            }}
+          >
             {tr("Finance Export")}
           </div>
-          <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
+
+          <h1
+            style={{
+              margin: "14px 0 0",
+              fontSize: 30,
+              fontWeight: 900,
+              color: "#0f172a",
+            }}
+          >
             {tr("Finance Export Pack")}
           </h1>
-          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
+
+          <p
+            style={{
+              margin: "10px 0 0",
+              color: "#64748b",
+              fontSize: 14,
+              lineHeight: 1.7,
+            }}
+          >
             {tr("Export dispatch closeout, rider handover, and delivery closeout detail packs for finance reconciliation.")}
           </p>
         </div>
       </section>
 
-      <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-        <input style={inputStyle} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        <input style={inputStyle} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        <input style={inputStyle} placeholder={tr("Rider Name")} value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+      <section
+        style={{
+          ...card,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
+        <input
+          style={inputStyle}
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <input
+          style={inputStyle}
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+        <input
+          style={inputStyle}
+          placeholder={tr("Rider Name")}
+          value={riderName}
+          onChange={(e) => setRiderName(e.target.value)}
+        />
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 18 }}>
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 18,
+        }}
+      >
         <ExportCard
           title={tr("Dispatch Closeout Pack")}
           desc={tr("Closed dispatch batch summary for finance review.")}
+          canExport={canExport}
           onClick={() => openPack("dispatch_closeout")}
         />
         <ExportCard
           title={tr("Rider Handover Pack")}
           desc={tr("Saved rider handover reports for reconciliation.")}
+          canExport={canExport}
           onClick={() => openPack("rider_handover")}
         />
         <ExportCard
           title={tr("Delivery Closeout Detail")}
           desc={tr("Delivery-level closeout detail linked to closed batches.")}
+          canExport={canExport}
           onClick={() => openPack("delivery_closeout_detail")}
         />
       </section>
@@ -81,22 +149,36 @@ export default function FinanceExportPack() {
   );
 }
 
-function ExportCard({ title, desc, onClick }: { title: string; desc: string; onClick: () => void }) {
+function ExportCard({
+  title,
+  desc,
+  onClick,
+  canExport,
+}: {
+  title: string;
+  desc: string;
+  onClick: () => void;
+  canExport: boolean;
+}) {
   return (
     <div style={card}>
       <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{title}</div>
       <div style={{ marginTop: 8, color: "#64748b", lineHeight: 1.7 }}>{desc}</div>
+
       <button
-        onClick={access.can("finance.export") ? onClick : undefined}
+        type="button"
+        onClick={canExport ? onClick : undefined}
+        disabled={!canExport}
         style={{
           marginTop: 16,
           border: "none",
           borderRadius: 12,
-          background: "#0f766e",
+          background: canExport ? "#0f766e" : "#94a3b8",
           color: "#fff",
           padding: "12px 16px",
           fontWeight: 800,
-          cursor: "pointer",
+          cursor: canExport ? "pointer" : "not-allowed",
+          opacity: canExport ? 1 : 0.8,
         }}
       >
         Export CSV

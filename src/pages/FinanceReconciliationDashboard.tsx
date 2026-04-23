@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { readApiJson } from "@/lib/readApiJson";
 import React, { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { statusText } from "@/lib/statusText";
@@ -45,9 +45,8 @@ export default function FinanceReconciliationDashboard() {
       if (dateFrom) qs.set("date_from", dateFrom);
       if (dateTo) qs.set("date_to", dateTo);
 
-      const res = await fetch(`/api/v1/finance-reconciliation?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load finance reconciliation");
+    const res = await fetch("/api/...");
+    const data = await readApiJson(res);
       setRows(Array.isArray(data?.data) ? data.data : []);
     } catch (error: any) {
       setMessage(error?.message || "Failed to load finance reconciliation");
