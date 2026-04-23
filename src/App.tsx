@@ -15,6 +15,7 @@ import SupervisorPortal from "./pages/SupervisorPortal";
 import CustomerServicePortal from "./pages/CustomerServicePortal";
 import MarketingPortal from "./pages/MarketingPortal";
 import MerchantPortal from "./pages/MerchantPortal";
+import CustomerPortal from "./pages/CustomerPortal";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";
 import DeliveryExceptionCenter from "./pages/DeliveryExceptionCenter";
@@ -95,7 +96,7 @@ function PortalRoutes() {
           <Route path="/merchant" element={<MerchantPortal />} />
           <Route path="/customer-service" element={<CustomerServicePortal />} />
           <Route path="/marketing" element={<MarketingPortal />} />
-          <Route path="/customer" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/customer" element={<CustomerPortal />} />
           <Route path="/branch-office" element={<Navigate to="/dashboard" replace />} />
 
           <Route path="*" element={<NotFoundPage />} />
