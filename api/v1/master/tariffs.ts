@@ -17,78 +17,87 @@ function parseBody(req: VercelRequest) {
   return req.body;
 }
 
-function num(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method === "GET") {
-      const serviceType = String(req.query.service_type || "").trim();
-      const township = String(req.query.township || "").trim();
-      const activeOnly = String(req.query.active_only || "false").trim() === "true";
+      const q = String(req.query.q || "").trim().toLowerCase();
 
       let query = supabaseAdmin
-        .from("tariff_rate_cards")
-        .select("*")
-        .order("service_type", { ascending: true })
-        .order("township", { ascending: true });
-
-      if (serviceType) query = query.eq("service_type", serviceType);
-      if (township) query = query.eq("township", township);
-      if (activeOnly) query = query.eq("active", true);
+        .from("tariffs")
+        .select("id, township_name, base_price, weight_surcharge_per_kg, created_by, updated_at")
+        .order("township_name", { ascending: true });
 
       const result = await query;
       if (result.error) return send(res, 500, { error: result.error.message });
 
-      return send(res, 200, { ok: true, data: result.data || [] });
+      let rows = result.data || [];
+      if (q) {
+        rows = rows.filter((row: any) =>
+          String(row.township_name || "").toLowerCase().includes(q)
+        );
+      }
+
+      return send(res, 200, { ok: true, data: rows });
     }
 
     if (req.method === "POST") {
       const body = parseBody(req);
 
+      const township_name = String(body.township_name || "").trim();
+      const base_price = Number(body.base_price || 0);
+      const weight_surcharge_per_kg = Number(body.weight_surcharge_per_kg || 0);
+      const created_by =
+        body.created_by && String(body.created_by).trim()
+          ? String(body.created_by).trim()
+          : null;
+
+      if (!township_name) return send(res, 400, { error: "township_name is required" });
+      if (!Number.isFinite(base_price)) return send(res, 400, { error: "base_price must be numeric" });
+      if (!Number.isFinite(weight_surcharge_per_kg)) {
+        return send(res, 400, { error: "weight_surcharge_per_kg must be numeric" });
+      }
+
       const insertRes = await supabaseAdmin
-        .from("tariff_rate_cards")
+        .from("tariffs")
         .insert({
-          service_type: body.service_type,
-          township: body.township || null,
-          base_weight_kg: num(body.base_weight_kg || 0),
-          base_delivery_fee: num(body.base_delivery_fee || 0),
-          overweight_per_kg: num(body.overweight_per_kg || 0),
-          notes: body.notes || null,
-          active: body.active !== false,
+          township_name,
+          base_price,
+          weight_surcharge_per_kg,
+          created_by,
           updated_at: new Date().toISOString(),
         })
-        .select("*")
+        .select("id, township_name, base_price, weight_surcharge_per_kg, created_by, updated_at")
         .single();
 
       if (insertRes.error) return send(res, 500, { error: insertRes.error.message });
       return send(res, 200, { ok: true, data: insertRes.data });
     }
 
-    if (req.method === "PATCH") {
+    if (req.method === "PUT") {
       const body = parseBody(req);
-      const id = String(body.id || "").trim();
 
-      if (!id) {
-        return send(res, 400, { error: "id is required" });
+      const id = String(body.id || "").trim();
+      const township_name = String(body.township_name || "").trim();
+      const base_price = Number(body.base_price || 0);
+      const weight_surcharge_per_kg = Number(body.weight_surcharge_per_kg || 0);
+
+      if (!id) return send(res, 400, { error: "id is required" });
+      if (!township_name) return send(res, 400, { error: "township_name is required" });
+      if (!Number.isFinite(base_price)) return send(res, 400, { error: "base_price must be numeric" });
+      if (!Number.isFinite(weight_surcharge_per_kg)) {
+        return send(res, 400, { error: "weight_surcharge_per_kg must be numeric" });
       }
 
       const updateRes = await supabaseAdmin
-        .from("tariff_rate_cards")
+        .from("tariffs")
         .update({
-          service_type: body.service_type,
-          township: body.township || null,
-          base_weight_kg: num(body.base_weight_kg || 0),
-          base_delivery_fee: num(body.base_delivery_fee || 0),
-          overweight_per_kg: num(body.overweight_per_kg || 0),
-          notes: body.notes || null,
-          active: body.active !== false,
+          township_name,
+          base_price,
+          weight_surcharge_per_kg,
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
-        .select("*")
+        .select("id, township_name, base_price, weight_surcharge_per_kg, created_by, updated_at")
         .single();
 
       if (updateRes.error) return send(res, 500, { error: updateRes.error.message });
@@ -97,6 +106,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return send(res, 405, { error: "Method not allowed" });
   } catch (error: any) {
-    return send(res, 500, { error: error?.message || "Tariff master API failed" });
+    return send(res, 500, { error: error?.message || "Tariff API failed" });
   }
 }

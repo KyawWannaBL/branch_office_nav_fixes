@@ -1,206 +1,352 @@
 // @ts-nocheck
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
+import { translateMessage } from "@/lib/translateMessage";
 
-const emptyForm = {
-  id: "",
-  service_type: "standard",
-  township: "",
-  base_weight_kg: "3",
-  base_delivery_fee: "4000",
-  overweight_per_kg: "2500",
-  notes: "",
-  active: true,
+const card: React.CSSProperties = {
+  border: "1px solid #dbe4ee",
+  borderRadius: 22,
+  background: "#fff",
+  padding: 18,
+  boxShadow: "0 10px 24px rgba(15,23,42,.04)",
 };
 
-const serviceOptions = ["standard", "same_day", "next_day", "scheduled", "express", "cod_express"];
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: "11px 12px",
+  fontSize: 14,
+  fontFamily: "inherit",
+};
+
+const primaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f766e",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f2f5c",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const mutedBtn: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const th: React.CSSProperties = {
+  textAlign: "left",
+  padding: "10px 12px",
+  borderBottom: "1px solid #dbe4ee",
+  fontWeight: 800,
+  color: "#334155",
+  background: "#f8fafc",
+};
+
+const td: React.CSSProperties = {
+  padding: "10px 12px",
+  borderBottom: "1px solid #e2e8f0",
+  color: "#334155",
+  verticalAlign: "top",
+};
+
+function safe(v: any, fb = "-") {
+  return v === null || v === undefined || v === "" ? fb : String(v);
+}
 
 export default function TariffMaster() {
   const { lang, t: tr } = useT();
-  const [rows, setRows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [serviceFilter, setServiceFilter] = useState("");
-  const [townshipFilter, setTownshipFilter] = useState("");
-  const [form, setForm] = useState<any>(emptyForm);
 
-  async function load() {
-    setLoading(true);
+  const [rows, setRows] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    id: "",
+    township_name: "",
+    base_price: "",
+    weight_surcharge_per_kg: "0",
+  });
+
+  async function loadData() {
+    setMessage("");
     try {
       const qs = new URLSearchParams();
-      if (serviceFilter) qs.set("service_type", serviceFilter);
-      if (townshipFilter) qs.set("township", townshipFilter);
+      if (search.trim()) qs.set("q", search.trim());
 
       const res = await fetch(`/api/v1/master/tariffs?${qs.toString()}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to load tariffs");
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+
       setRows(Array.isArray(data?.data) ? data.data : []);
     } catch (error: any) {
-      setMessage(error?.message || "Failed to load tariffs");
-    } finally {
-      setLoading(false);
+      setRows([]);
+      setMessage(error?.message || "Failed to load");
     }
   }
 
   useEffect(() => {
-    void load();
+    void loadData();
   }, []);
 
-  async function save() {
-    setMessage("");
-    const method = form.id ? "PATCH" : "POST";
-
-    const res = await fetch("/api/v1/master/tariffs", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        base_weight_kg: Number(form.base_weight_kg || 0),
-        base_delivery_fee: Number(form.base_delivery_fee || 0),
-        overweight_per_kg: Number(form.overweight_per_kg || 0),
-      }),
+  function resetForm() {
+    setForm({
+      id: "",
+      township_name: "",
+      base_price: "",
+      weight_surcharge_per_kg: "0",
     });
-
-    const data = await res.json();
-    if (!res.ok) return setMessage(data?.error || "Failed to save tariff");
-
-    setMessage(form.id ? "Tariff updated." : "Tariff created.");
-    setForm(emptyForm);
-    await load();
   }
 
   function editRow(row: any) {
     setForm({
-      id: row.id || "",
-      service_type: row.service_type || "standard",
-      township: row.township || "",
-      base_weight_kg: String(row.base_weight_kg ?? 0),
-      base_delivery_fee: String(row.base_delivery_fee ?? 0),
-      overweight_per_kg: String(row.overweight_per_kg ?? 0),
-      notes: row.notes || "",
-      active: row.active !== false,
+      id: String(row.id || ""),
+      township_name: String(row.township_name || ""),
+      base_price: String(row.base_price ?? ""),
+      weight_surcharge_per_kg: String(row.weight_surcharge_per_kg ?? 0),
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  return (
-    <div className="tm-page">
-      <style>{css}</style>
+  async function saveForm() {
+    setMessage("");
 
-      <section className="tm-hero">
+    const township_name = form.township_name.trim();
+    const base_price = Number(form.base_price);
+    const weight_surcharge_per_kg = Number(form.weight_surcharge_per_kg);
+
+    if (!township_name) {
+      setMessage("Township Name is required");
+      return;
+    }
+    if (!Number.isFinite(base_price)) {
+      setMessage("Base Price must be numeric");
+      return;
+    }
+    if (!Number.isFinite(weight_surcharge_per_kg)) {
+      setMessage("Weight Surcharge / Kg must be numeric");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const method = form.id ? "PUT" : "POST";
+      const res = await fetch("/api/v1/master/tariffs", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: form.id || undefined,
+          township_name,
+          base_price,
+          weight_surcharge_per_kg,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Save failed");
+
+      setMessage(form.id ? "Tariff updated." : "Tariff created.");
+      resetForm();
+      await loadData();
+    } catch (error: any) {
+      setMessage(error?.message || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalRows = useMemo(() => rows.length, [rows]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <section style={card}>
+        <div
+          style={{
+            display: "inline-flex",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: "#eff6ff",
+            color: "#1d4ed8",
+            fontSize: 12,
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: ".12em",
+          }}
+        >
+          {tr("Tariff Master")}
+        </div>
+        <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
+          {tr("Tariff Master")}
+        </h1>
+        <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
+          {tr("Manage township tariff base prices and weight surcharge values.")}
+        </p>
+      </section>
+
+      {message ? (
+        <div
+          style={{
+            border: "1px solid #a5f3fc",
+            background: "#ecfeff",
+            color: "#0f766e",
+            padding: "12px 14px",
+            borderRadius: 16,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          {translateMessage(lang, message)}
+        </div>
+      ) : null}
+
+      <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
         <div>
-          <div className="tm-chip">Admin Master Data</div>
-          <h1>Tariff Master</h1>
-          <p>Manage service type pricing, township-specific overrides, base weight, and overweight surcharge rates.</p>
+          <div style={labelStyle}>{tr("Township Name")}</div>
+          <input
+            style={inputStyle}
+            value={form.township_name}
+            onChange={(e) => setForm((s) => ({ ...s, township_name: e.target.value }))}
+            placeholder={tr("Township Name")}
+          />
+        </div>
+
+        <div>
+          <div style={labelStyle}>{tr("Base Price")}</div>
+          <input
+            style={inputStyle}
+            value={form.base_price}
+            onChange={(e) => setForm((s) => ({ ...s, base_price: e.target.value }))}
+            placeholder={tr("Base Price")}
+            inputMode="decimal"
+          />
+        </div>
+
+        <div>
+          <div style={labelStyle}>{tr("Weight Surcharge / Kg")}</div>
+          <input
+            style={inputStyle}
+            value={form.weight_surcharge_per_kg}
+            onChange={(e) => setForm((s) => ({ ...s, weight_surcharge_per_kg: e.target.value }))}
+            placeholder={tr("Weight Surcharge / Kg")}
+            inputMode="decimal"
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", gridColumn: "1 / -1" }}>
+          <button style={primaryBtn} onClick={saveForm} disabled={saving}>
+            {form.id ? tr("Update Tariff") : tr("Create Tariff")}
+          </button>
+          <button style={mutedBtn} onClick={resetForm} type="button">
+            {tr("Reset")}
+          </button>
         </div>
       </section>
 
-      {message ? <div className="tm-alert">{message}</div> : null}
+      <section style={{ ...card, display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 260, flex: 1 }}>
+          <div style={labelStyle}>{tr("Search")}</div>
+          <input
+            style={inputStyle}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={tr("Search")}
+          />
+        </div>
 
-      <div className="tm-layout">
-        <section className="tm-card">
-          <div className="tm-title">Tariff Form</div>
-          <div className="tm-grid">
-            <select value={form.service_type} onChange={(e) => setForm({ ...form, service_type: e.target.value })}>
-              {serviceOptions.map((service) => (
-                <option key={service} value={service}>{service}</option>
-              ))}
-            </select>
-            <input placeholder="Township (blank = default)" value={form.township} onChange={(e) => setForm({ ...form, township: e.target.value })} />
-            <input placeholder={tr("Base Weight (kg)")} value={form.base_weight_kg} onChange={(e) => setForm({ ...form, base_weight_kg: e.target.value })} />
-            <input placeholder={tr("Base Delivery Fee")} value={form.base_delivery_fee} onChange={(e) => setForm({ ...form, base_delivery_fee: e.target.value })} />
-            <input placeholder={tr("Overweight Per Kg")} value={form.overweight_per_kg} onChange={(e) => setForm({ ...form, overweight_per_kg: e.target.value })} />
-            <select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === "true" })}>
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </select>
-            <textarea className="wide" placeholder={tr("Notes")} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        <button style={secondaryBtn} onClick={loadData}>
+          {tr("Apply")}
+        </button>
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14 }}>
+        <div style={card}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#64748b" }}>
+            {tr("Tariff List")}
           </div>
-
-          <div className="tm-actions">
-            <button className="tm-btn secondary" onClick={() => setForm(emptyForm)}>{tr("Reset")}</button>
-            <button className="tm-btn primary" onClick={save}>{form.id ? "Update Tariff" : "Create Tariff"}</button>
+          <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, color: "#0f172a" }}>
+            {totalRows}
           </div>
-        </section>
+        </div>
 
-        <section className="tm-card">
-          <div className="tm-head">
-            <div className="tm-title">Tariff List</div>
-            <div className="tm-inline">
-              <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
-                <option value="">All Services</option>
-                {serviceOptions.map((service) => (
-                  <option key={service} value={service}>{service}</option>
-                ))}
-              </select>
-              <input placeholder={tr("Township")} value={townshipFilter} onChange={(e) => setTownshipFilter(e.target.value)} />
-              <button className="tm-btn primary" onClick={load}>{tr("Search")}</button>
-            </div>
+        <div style={card}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#64748b" }}>
+            {tr("Table Source")}
           </div>
+          <div style={{ marginTop: 10, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+            public.tariffs
+          </div>
+          <div style={{ marginTop: 6, color: "#64748b", fontSize: 13 }}>
+            township_name · base_price · weight_surcharge_per_kg
+          </div>
+        </div>
+      </section>
 
-          <div className="tm-table-wrap">
-            <table className="tm-table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Township</th>
-                  <th>Base Weight</th>
-                  <th>Base Fee</th>
-                  <th>Overweight / Kg</th>
-                  <th>Status</th>
-                  <th>Action</th>
+      <section style={card}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", marginBottom: 14 }}>
+          {tr("Tariff List")}
+        </div>
+
+        <div style={{ overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={th}>{tr("Township Name")}</th>
+                <th style={th}>{tr("Base Price")}</th>
+                <th style={th}>{tr("Weight Surcharge / Kg")}</th>
+                <th style={th}>{tr("Updated At")}</th>
+                <th style={th}>{tr("Action")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row: any) => (
+                <tr key={row.id}>
+                  <td style={td}>{safe(row.township_name)}</td>
+                  <td style={td}>{safe(row.base_price)}</td>
+                  <td style={td}>{safe(row.weight_surcharge_per_kg)}</td>
+                  <td style={td}>{safe(row.updated_at)}</td>
+                  <td style={td}>
+                    <button style={secondaryBtn} onClick={() => editRow(row)}>
+                      {tr("Edit")}
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="strong">{row.service_type}</td>
-                    <td>{row.township || "Default"}</td>
-                    <td>{row.base_weight_kg}</td>
-                    <td>{row.base_delivery_fee}</td>
-                    <td>{row.overweight_per_kg}</td>
-                    <td>{row.active ? "Active" : "Inactive"}</td>
-                    <td><button className="tm-btn small secondary" onClick={() => editRow(row)}>{tr("Edit")}</button></td>
-                  </tr>
-                ))}
-                {!rows.length && (
-                  <tr>
-                    <td colSpan={7} className="empty">{loading ? "Loading..." : "No tariff records found."}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+              ))}
+            </tbody>
+          </table>
+
+          {!rows.length ? (
+            <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+              {tr("No tariff records found.")}
+            </div>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
 
-const css = `
-.tm-page{display:flex;flex-direction:column;gap:18px}
-.tm-hero{border:1px solid #dbe4ee;border-radius:24px;background:linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);padding:24px;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-.tm-chip{display:inline-flex;padding:8px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
-.tm-hero h1{margin:14px 0 0;font-size:30px;font-weight:900;color:#0f172a}
-.tm-hero p{margin:10px 0 0;color:#64748b;font-size:14px;line-height:1.7}
-.tm-alert{border:1px solid #a5f3fc;background:#ecfeff;color:#0f766e;padding:12px 14px;border-radius:16px;font-size:13px;font-weight:700}
-.tm-layout{display:grid;grid-template-columns:420px minmax(0,1fr);gap:18px}
-.tm-card{border:1px solid #dbe4ee;border-radius:24px;background:#fff;padding:20px;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-.tm-title{font-size:22px;font-weight:900;color:#0f172a}
-.tm-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px}
-.tm-inline{display:flex;gap:8px;flex-wrap:wrap}
-.tm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
-.tm-grid input,.tm-grid select,.tm-grid textarea,.tm-inline input,.tm-inline select{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;font-size:14px;font-family:inherit}
-.tm-grid .wide{grid-column:1 / -1;min-height:100px}
-.tm-actions{display:flex;gap:10px;margin-top:16px}
-.tm-btn{border:none;border-radius:14px;padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer}
-.tm-btn.primary{background:#0f766e;color:#fff}
-.tm-btn.secondary{background:#0f2f5c;color:#fff}
-.tm-btn.small{padding:8px 12px;font-size:12px}
-.tm-table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:18px}
-.tm-table{width:100%;border-collapse:collapse;min-width:780px}
-.tm-table th{background:#f8fafc;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:14px 12px;border-bottom:1px solid #e2e8f0}
-.tm-table td{padding:14px 12px;border-bottom:1px solid #eef2f7;color:#334155;font-size:14px}
-.tm-table .strong{font-weight:900;color:#0f172a}
-.empty{text-align:center;color:#64748b;padding:18px}
-@media (max-width: 1100px){.tm-layout{grid-template-columns:1fr}}
-`;
+const labelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: ".08em",
+  color: "#64748b",
+  marginBottom: 6,
+};

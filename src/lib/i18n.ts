@@ -475,7 +475,18 @@ export const MY_TRANSLATIONS: Record<string, string> = {
   "Exception Resolutions": "Exception Resolutions",
   "Rider Handovers": "Rider Handovers",
   "Preset name is required": "Preset အမည် လိုအပ်သည်။",
-  "Only custom presets can be deleted": "Custom presets များသာ ဖျက်နိုင်သည်။"
+  "Only custom presets can be deleted": "Custom presets များသာ ဖျက်နိုင်သည်။",
+  "Township Name": "မြို့နယ်အမည်",
+  "Base Price": "အခြေခံစျေးနှုန်း",
+  "Weight Surcharge / Kg": "အလေးချိန်ပိုကြေး / ကီလို",
+  "Manage township tariff base prices and weight surcharge values.": "မြို့နယ်အလိုက် tariff base price နှင့် weight surcharge values များကို စီမံနိုင်သည်။",
+  "Tariff updated.": "Tariff ပြင်ဆင်ပြီးပါပြီ။",
+  "Tariff created.": "Tariff ဖန်တီးပြီးပါပြီ။",
+  "Township Name is required": "Township Name လိုအပ်သည်။",
+  "Base Price must be numeric": "Base Price သည် ကိန်းဂဏန်းဖြစ်ရမည်။",
+  "Weight Surcharge / Kg must be numeric": "Weight Surcharge / Kg သည် ကိန်းဂဏန်းဖြစ်ရမည်။",
+  "Updated At": "ပြင်ဆင်ချိန်",
+  "Table Source": "Table Source"
 };
 
 export function t(lang: AppLang, value: string): string {
