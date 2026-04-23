@@ -28,6 +28,7 @@ import FinanceBatchDrilldown from "./pages/FinanceBatchDrilldown";
 import RiderSettlementReport from "./pages/RiderSettlementReport";
 import OperationsCommandCenter from "./pages/OperationsCommandCenter";
 import OperationsAdminPortal from "./pages/OperationsAdminPortal";
+import SuperAdminPortal from "./pages/SuperAdminPortal";
 import ExecutiveOperationsDashboard from "./pages/ExecutiveOperationsDashboard";
 import AuditLogViewer from "./pages/AuditLogViewer";
 import DataEntryOperationsDashboard from "./pages/DataEntryOperationsDashboard";
@@ -74,6 +75,9 @@ function PortalRoutes() {
 
           <Route path="/operations-command-center" element={<OperationsCommandCenter />} />
           <Route path="/operations-admin" element={<OperationsAdminPortal />} />
+          <Route path="/super-admin" element={<SuperAdminPortal />} />
+          <Route path="/super-admin-portal" element={<SuperAdminPortal />} />
+          <Route path="/system-admin" element={<SuperAdminPortal />} />
           <Route path="/operations-admin-portal" element={<OperationsAdminPortal />} />
           <Route path="/ops-admin" element={<OperationsAdminPortal />} />
           <Route path="/executive-operations" element={<ExecutiveOperationsDashboard />} />
