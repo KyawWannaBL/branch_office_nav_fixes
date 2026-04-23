@@ -12,6 +12,7 @@ import PickupRegistration from "./pages/PickupRegistration";
 import DeliveryRegistration from "./pages/DeliveryRegistration";
 import WayManagement from "./pages/WayManagement";
 import SupervisorPortal from "./pages/SupervisorPortal";
+import CustomerServicePortal from "./pages/CustomerServicePortal";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";
 import DeliveryExceptionCenter from "./pages/DeliveryExceptionCenter";
@@ -90,7 +91,7 @@ function PortalRoutes() {
           <Route path="/warehouse/qr" element={<Navigate to="/dashboard" replace />} />
 
           <Route path="/merchant" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/customer-service" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/customer-service" element={<CustomerServicePortal />} />
           <Route path="/marketing" element={<Navigate to="/dashboard" replace />} />
           <Route path="/customer" element={<Navigate to="/dashboard" replace />} />
           <Route path="/branch-office" element={<Navigate to="/dashboard" replace />} />

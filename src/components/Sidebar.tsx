@@ -14,8 +14,7 @@ import {
   Receipt,
   ShieldCheck,
   Truck,
-  Wallet,
-} from "lucide-react";
+  Wallet, Headset } from "lucide-react";
 
 import { useT } from "@/hooks/useT";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -39,6 +38,7 @@ const sections: NavSection[] = [
       { title: "Pickup Registration", path: "/pickup-registration", icon: Package },
       { title: "Delivery Registration", path: "/delivery-registration", icon: Package },
       { title: "Way Management", path: "/way-management", icon: Package },
+      { title: "Customer Service", path: "/customer-service", icon: Headset },
     ],
   },
   {
