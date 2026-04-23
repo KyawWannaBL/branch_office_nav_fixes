@@ -49,6 +49,7 @@ const sections: NavSection[] = [
     label: "Delivery Operations",
     items: [
       { title: "Delivery Workflow", path: "/delivery-workflow", icon: Truck },
+      { title: "Rider Portal", path: "/rider-portal", icon: Truck },
       { title: "Delivery Dispatch", path: "/delivery-dispatch", icon: Truck },
       { title: "Delivery Exceptions", path: "/delivery-exceptions", icon: Truck },
       { title: "Pickup & Delivery Overview", path: "/pickup-delivery-overview", icon: Map },

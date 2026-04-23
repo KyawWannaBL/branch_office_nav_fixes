@@ -17,6 +17,7 @@ import MarketingPortal from "./pages/MarketingPortal";
 import MerchantPortal from "./pages/MerchantPortal";
 import CustomerPortal from "./pages/CustomerPortal";
 import HRPortal from "./pages/HRPortal";
+import RiderPortal from "./pages/RiderPortal";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";
 import DeliveryExceptionCenter from "./pages/DeliveryExceptionCenter";
@@ -56,6 +57,9 @@ function PortalRoutes() {
 
           <Route path="/way-management" element={<WayManagement />} />
                     <Route path="/supervisor" element={<SupervisorPortal />} />
+          <Route path="/rider-portal/helpers" element={<RiderPortal />} />
+          <Route path="/rider-portal/drivers" element={<RiderPortal />} />
+          <Route path="/rider-portal" element={<RiderPortal />} />
           <Route path="/delivery-workflow" element={<DeliveryWorkflowOperations />} />
           <Route path="/delivery-dispatch" element={<DeliveryDispatchBoard />} />
           <Route path="/delivery-exceptions" element={<DeliveryExceptionCenter />} />
