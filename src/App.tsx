@@ -8,6 +8,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import Dashboard from "./pages/Dashboard";
 import CreateDelivery from "./pages/CreateDelivery";
+import PickupRegistration from "./pages/PickupRegistration";
+import DeliveryRegistration from "./pages/DeliveryRegistration";
 import WayManagement from "./pages/WayManagement";
 import DeliveryWorkflowOperations from "./pages/DeliveryWorkflowOperations";
 import DeliveryDispatchBoard from "./pages/DeliveryDispatchBoard";

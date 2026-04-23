@@ -1,16 +1,14 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  useCreatePickup,
-  useCreateShipment,
-  usePickups,
-  useMasterParties,
-  useMasterLocations,
-} from "../hooks/useApi";
+import { usePickups, useMasterParties, useMasterLocations } from "../hooks/useApi";
 import { CITY_OPTIONS, getTownshipsByCity, searchPartyProfiles, findPartyByBusinessName } from "../lib/masterData";
 import { useT } from "@/hooks/useT";
-import { statusText } from "@/lib/statusText";
+import { readApiJson } from "@/lib/readApiJson";
+import PriceControlSection, {
+  type PricingBreakdown,
+  type PriceUiState,
+} from "@/components/features/delivery/PriceControl/PriceControlSection";
 
 type SourceType = "MER" | "CUS" | "OS" | "DEO";
 type PayStatus = "PAID" | "UNPAID";
@@ -47,6 +45,16 @@ type DeliveryRow = {
 
 const serviceOptions = ["standard", "express", "same_day", "cod_express"];
 
+const cardBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 14,
+  padding: "12px 18px",
+  fontSize: 14,
+  fontWeight: 800,
+  cursor: "pointer",
+  transition: "all .22s ease",
+};
+
 const initPickup = (): PickupForm => ({
   pickupDate: new Date().toISOString().slice(0, 10),
   sourceType: "MER",
@@ -74,6 +82,29 @@ const initRow = (): DeliveryRow => ({
   deliveryPaymentStatus: "UNPAID",
   merchantCharge: "0",
   notes: "",
+});
+
+const initPriceUiState = (): PriceUiState => ({
+  baseStatus: "system",
+  overweightStatus: "system",
+  britiumStatus: "system",
+  merchantStatus: "system",
+  finalStatus: "system",
+});
+
+const emptyPricing = (): PricingBreakdown => ({
+  baseWeightKg: 3,
+  baseDeliveryFee: 0,
+  overweightKg: 0,
+  overweightPerKg: 500,
+  overweightSurcharge: 0,
+  osDeliveryCharge: 0,
+  merchantInputCharge: 0,
+  printedWaybillDeliveryCharge: 0,
+  osTotalCod: 0,
+  waybillTotalCod: 0,
+  receivable: 0,
+  pricingSource: "pending",
 });
 
 const fmtDateToken = (d: string) => {
@@ -110,39 +141,20 @@ const money = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n || 0)} MMK`;
 
-function pricing(r: DeliveryRow) {
-  const weight = Number(r.weightKg || 0);
-  const cod = Number(r.codAmount || 0);
-  const merchant = Number(r.merchantCharge || 0);
+function normalizeError(error: any, fallback: string) {
+  const message = String(error?.message || fallback);
+  if (/Unexpected token .* valid JSON/i.test(message)) {
+    return "Server returned an invalid response";
+  }
+  return message;
+}
 
-  const baseMap: Record<string, number> = {
-    standard: 4000,
-    express: 5000,
-    same_day: 6000,
-    cod_express: 6500,
-  };
-
-  const base = baseMap[r.serviceType] || 4000;
-  const surcharge = Math.max(0, weight - 3) * 2500;
-  const os = base + surcharge;
-  const wb = Math.max(os, merchant);
-
-  const itemCollectable = r.itemPaymentStatus === "UNPAID" ? cod : 0;
-  const osDeliveryCollectable = r.deliveryPaymentStatus === "UNPAID" ? os : 0;
-  const wbDeliveryCollectable = r.deliveryPaymentStatus === "UNPAID" ? wb : 0;
-
-  return {
-    os,
-    wb,
-    surcharge,
-    osTotal: itemCollectable + osDeliveryCollectable,
-    wbTotal: itemCollectable + wbDeliveryCollectable,
-    receivable: itemCollectable + osDeliveryCollectable,
-  };
+function safe(v: any, fb = "-") {
+  return v === null || v === undefined || v === "" ? fb : String(v);
 }
 
 export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliveryMode }) {
-  const { lang, t: tr } = useT();
+  const { t: tr } = useT();
   const [searchParams] = useSearchParams();
   const pickupIdFromQuery = searchParams.get("pickup_id") || "";
   const deliveryIdFromQuery = searchParams.get("delivery_id") || "";
@@ -154,22 +166,26 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
   const [existingPickupId, setExistingPickupId] = useState("");
   const [pickupStatus, setPickupStatus] = useState<"DRAFT" | "SAVED" | "SUBMITTED">("DRAFT");
   const [lastSavedAt, setLastSavedAt] = useState("");
+  const [pricing, setPricing] = useState<PricingBreakdown>(emptyPricing());
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [priceUiStates, setPriceUiStates] = useState<PriceUiState[]>([initPriceUiState()]);
 
   const isPickupMode = mode === "pickup";
   const isDeliveryMode = mode === "delivery";
 
   const pickups = usePickups({ limit: "200" });
-  const createPickup = useCreatePickup();
-  const createShipment = useCreateShipment();
-
   const pickupList = Array.isArray(pickups.data) ? pickups.data : [];
-
   const current = rows[selected] ?? initRow();
+  const currentPriceUi = priceUiStates[selected] || initPriceUiState();
+
   const senderPartyType =
-    pickup.sourceType === "MER" ? "merchant" :
-    pickup.sourceType === "CUS" ? "customer" :
-    pickup.sourceType === "OS" ? "online_store" :
-    "";
+    pickup.sourceType === "MER"
+      ? "merchant"
+      : pickup.sourceType === "CUS"
+        ? "customer"
+        : pickup.sourceType === "OS"
+          ? "online_store"
+          : "";
 
   const senderMasterQuery = useMasterParties({
     q: pickup.businessName,
@@ -181,44 +197,62 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
     party_type: "customer",
   });
 
-  const senderMasterRows = Array.isArray(senderMasterQuery.data) ? senderMasterQuery.data : senderMasterQuery.data?.data || [];
-  const receiverMasterRows = Array.isArray(receiverMasterQuery.data) ? receiverMasterQuery.data : receiverMasterQuery.data?.data || [];
+  const senderMasterRows = Array.isArray(senderMasterQuery.data)
+    ? senderMasterQuery.data
+    : senderMasterQuery.data?.data || [];
+
+  const receiverMasterRows = Array.isArray(receiverMasterQuery.data)
+    ? receiverMasterQuery.data
+    : receiverMasterQuery.data?.data || [];
 
   const pickupLocationsQuery = useMasterLocations({ city: pickup.pickupCity });
   const receiverLocationsQuery = useMasterLocations({ city: current.receiverCity });
 
-  const pickupLocationRows = Array.isArray(pickupLocationsQuery.data) ? pickupLocationsQuery.data : pickupLocationsQuery.data?.data || [];
-  const receiverLocationRows = Array.isArray(receiverLocationsQuery.data) ? receiverLocationsQuery.data : receiverLocationsQuery.data?.data || [];
+  const pickupLocationRows = Array.isArray(pickupLocationsQuery.data)
+    ? pickupLocationsQuery.data
+    : pickupLocationsQuery.data?.data || [];
 
-  const pickupCityOptions = [...new Set(
-    [
-      ...pickupLocationRows.map((x: any) => x.city),
-      ...receiverLocationRows.map((x: any) => x.city),
-      ...CITY_OPTIONS,
-    ].filter(Boolean)
-  )];
+  const receiverLocationRows = Array.isArray(receiverLocationsQuery.data)
+    ? receiverLocationsQuery.data
+    : receiverLocationsQuery.data?.data || [];
 
-  const receiverCityOptions = [...new Set(
-    [
-      ...pickupLocationRows.map((x: any) => x.city),
-      ...receiverLocationRows.map((x: any) => x.city),
-      ...CITY_OPTIONS,
-    ].filter(Boolean)
-  )];
+  const pickupCityOptions = [
+    ...new Set(
+      [
+        ...pickupLocationRows.map((x: any) => x.city),
+        ...receiverLocationRows.map((x: any) => x.city),
+        ...CITY_OPTIONS,
+      ].filter(Boolean)
+    ),
+  ];
 
-  const pickupTownshipOptions = [...new Set(
-    [
-      ...pickupLocationRows.map((x: any) => x.township),
-      ...getTownshipsByCity(pickup.pickupCity || ""),
-    ].filter(Boolean)
-  )];
+  const receiverCityOptions = [
+    ...new Set(
+      [
+        ...pickupLocationRows.map((x: any) => x.city),
+        ...receiverLocationRows.map((x: any) => x.city),
+        ...CITY_OPTIONS,
+      ].filter(Boolean)
+    ),
+  ];
 
-  const receiverTownshipOptions = [...new Set(
-    [
-      ...receiverLocationRows.map((x: any) => x.township),
-      ...getTownshipsByCity(current.receiverCity || ""),
-    ].filter(Boolean)
-  )];
+  const pickupTownshipOptions = [
+    ...new Set(
+      [
+        ...pickupLocationRows.map((x: any) => x.township),
+        ...getTownshipsByCity(pickup.pickupCity || ""),
+      ].filter(Boolean)
+    ),
+  ];
+
+  const receiverTownshipOptions = [
+    ...new Set(
+      [
+        ...receiverLocationRows.map((x: any) => x.township),
+        ...getTownshipsByCity(current.receiverCity || ""),
+      ].filter(Boolean)
+    ),
+  ];
 
   const senderMatches = useMemo(
     () =>
@@ -226,7 +260,11 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
         ? senderMasterRows.slice(0, 6)
         : searchPartyProfiles(
             pickup.businessName,
-            pickup.sourceType === "MER" ? "merchant" : pickup.sourceType === "CUS" ? "customer" : undefined
+            pickup.sourceType === "MER"
+              ? "merchant"
+              : pickup.sourceType === "CUS"
+                ? "customer"
+                : undefined
           ).slice(0, 6),
     [senderMasterRows, pickup.businessName, pickup.sourceType]
   );
@@ -270,6 +308,15 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
   );
 
   useEffect(() => {
+    setPriceUiStates((prev) => {
+      const next = [...prev];
+      while (next.length < rows.length) next.push(initPriceUiState());
+      next.length = rows.length;
+      return next;
+    });
+  }, [rows.length]);
+
+  useEffect(() => {
     if (!pickupIdFromQuery) {
       setExistingPickupId("");
       return;
@@ -279,16 +326,18 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
 
     async function loadPickupFromQuery() {
       try {
-        const res = await fetch(`/api/v1/pickups?pickup_id=${encodeURIComponent(pickupIdFromQuery)}`);
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data?.error || "Failed to load pickup");
+        const res = await fetch(
+          `/api/v1/pickups?pickup_id=${encodeURIComponent(pickupIdFromQuery)}`
+        );
+        const data = await readApiJson(res);
         if (!active) return;
 
         const serverPickup = data?.pickup || {};
         const serverRows = Array.isArray(data?.deliveries) ? data.deliveries : [];
 
         setExistingPickupId(serverPickup.pickup_id || pickupIdFromQuery);
+        setPickupStatus(serverPickup.pickup_status || "SAVED");
+        setLastSavedAt(serverPickup.updated_at || "");
 
         setPickup((prev) => ({
           ...prev,
@@ -308,10 +357,11 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             1
           ),
           pickupId: serverPickup.pickup_id || pickupIdFromQuery,
+          remarks: serverPickup.remarks || prev.remarks,
         }));
 
         const mappedRows = serverRows.length
-          ? serverRows.map((row) => ({
+          ? serverRows.map((row: any) => ({
               ...initRow(),
               receiverName: row.receiver_name || "",
               receiverPhone: row.receiver_phone || "",
@@ -329,16 +379,17 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
           : [initRow()];
 
         setRows(mappedRows);
+        setPriceUiStates(mappedRows.map(() => initPriceUiState()));
 
         const targetIndex = deliveryIdFromQuery
-          ? serverRows.findIndex((row) => String(row.delivery_id || "") === deliveryIdFromQuery)
+          ? serverRows.findIndex((row: any) => String(row.delivery_id || "") === deliveryIdFromQuery)
           : -1;
 
         setSelected(targetIndex >= 0 ? targetIndex : 0);
         setMessage(`Loaded ${serverPickup.pickup_id || pickupIdFromQuery}`);
       } catch (error: any) {
         if (!active) return;
-        setMessage(error?.message || "Failed to load pickup from overview");
+        setMessage(normalizeError(error, "Failed to load pickup from overview"));
       }
     }
 
@@ -349,7 +400,55 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
     };
   }, [pickupIdFromQuery, deliveryIdFromQuery]);
 
-  const calc = useMemo(() => pricing(current), [current]);
+  useEffect(() => {
+    if (!isDeliveryMode) return;
+
+    let active = true;
+    const timeout = setTimeout(async () => {
+      try {
+        setPricingLoading(true);
+        const res = await fetch("/api/v1/deliveries/recalc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            township: current.receiverTownship || "",
+            serviceType: current.serviceType || "standard",
+            weightKg: Number(current.weightKg || 0),
+            itemPrice: Number(current.codAmount || 0),
+            itemPaymentStatus: current.itemPaymentStatus,
+            merchantCustomerDeliveryCharge: Number(current.merchantCharge || 0),
+            deliveryPaymentStatus: current.deliveryPaymentStatus,
+          }),
+        });
+
+        const data = await readApiJson(res);
+        if (!active) return;
+        setPricing(data?.data || emptyPricing());
+      } catch {
+        if (!active) return;
+        setPricing({
+          ...emptyPricing(),
+          merchantInputCharge: Number(current.merchantCharge || 0),
+        });
+      } finally {
+        if (active) setPricingLoading(false);
+      }
+    }, 180);
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [
+    isDeliveryMode,
+    current.receiverTownship,
+    current.serviceType,
+    current.weightKg,
+    current.codAmount,
+    current.itemPaymentStatus,
+    current.merchantCharge,
+    current.deliveryPaymentStatus,
+  ]);
 
   const setPickupField = (key: keyof PickupForm, value: string) => {
     setPickup((p) => ({ ...p, [key]: value }));
@@ -367,12 +466,22 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
   };
 
   const setRow = (patch: Partial<DeliveryRow>) => {
-    setRows((prev) => prev.map((r, i) => (i === selected ? { ...r, ...patch } : r)));
+    setRows((prev) =>
+      prev.map((r, i) => (i === selected ? { ...r, ...patch } : r))
+    );
+  };
+
+  const setPriceUiState = (key: keyof PriceUiState, value: PriceUiState[keyof PriceUiState]) => {
+    setPriceUiStates((prev) =>
+      prev.map((state, i) => (i === selected ? { ...state, [key]: value } : state))
+    );
   };
 
   const fillSender = (name: string) => {
     const found = senderMasterRows.find(
-      (row: any) => String(row.business_name || "").trim().toLowerCase() === String(name || "").trim().toLowerCase()
+      (row: any) =>
+        String(row.business_name || "").trim().toLowerCase() ===
+        String(name || "").trim().toLowerCase()
     );
 
     if (found) {
@@ -404,7 +513,9 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
 
   const fillReceiver = (name: string) => {
     const found = receiverMasterRows.find(
-      (row: any) => String(row.business_name || "").trim().toLowerCase() === String(name || "").trim().toLowerCase()
+      (row: any) =>
+        String(row.business_name || "").trim().toLowerCase() ===
+        String(name || "").trim().toLowerCase()
     );
 
     if (found) {
@@ -440,26 +551,45 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
         body: JSON.stringify({
           action,
           pickup: {
-            ...pickup,
             pickupId: pickup.pickupId || "",
+            pickupDate: pickup.pickupDate,
+            sourceType: pickup.sourceType,
+            merchantName: pickup.businessName,
+            merchantCode: "",
+            contactName: pickup.contactName,
+            contactPhone: pickup.contactPhone,
+            pickupAddress: pickup.pickupAddress,
+            pickupCity: pickup.pickupCity,
+            pickupTownship: pickup.pickupTownship,
+            totalWays: pickup.totalWays,
             remarks: pickup.remarks || "",
           },
           deliveries: rows.map((row, index) => ({
-            ...row,
             lineNo: index + 1,
             deliveryId: deliveryIds[index] || "",
+            receiverName: row.receiverName,
+            receiverPhone: row.receiverPhone,
+            receiverAddress: row.receiverAddress,
+            receiverCity: row.receiverCity,
+            receiverTownship: row.receiverTownship,
             deliveryAddress: row.receiverAddress,
             township: row.receiverTownship,
-            merchantCustomerDeliveryCharge: row.merchantCharge,
+            weightKg: row.weightKg,
+            codAmount: row.codAmount,
             itemPrice: row.codAmount,
+            serviceType: row.serviceType,
+            itemPaymentStatus: row.itemPaymentStatus,
+            deliveryPaymentStatus: row.deliveryPaymentStatus,
+            merchantCharge: row.merchantCharge,
+            merchantCustomerDeliveryCharge: row.merchantCharge,
             notes: row.notes,
           })),
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to save pickup");
+      const data = await readApiJson(res);
 
+      setExistingPickupId(data.pickup.pickup_id);
       setPickup((prev) => ({
         ...prev,
         pickupId: data.pickup.pickup_id,
@@ -469,32 +599,39 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
       setPickupStatus(data.pickup.pickup_status || "SAVED");
       setLastSavedAt(data.pickup.updated_at || "");
 
-      setRows(
-        (data.deliveries || []).map((row: any) => ({
-          receiverName: row.receiver_name || "",
-          receiverPhone: row.receiver_phone || "",
-          receiverAddress: row.receiver_address || row.delivery_address || "",
-          receiverCity: row.receiver_city || "",
-          receiverTownship: row.receiver_township || row.township || "",
-          weightKg: String(row.weight_kg ?? 0),
-          codAmount: String(row.item_price ?? 0),
-          serviceType: row.service_type || "standard",
-          itemPaymentStatus: row.item_payment_status === "PAID" ? "PAID" : "UNPAID",
-          deliveryPaymentStatus: row.delivery_payment_status === "PAID" ? "PAID" : "UNPAID",
-          merchantCharge: String(row.merchant_customer_delivery_charge ?? 0),
-          notes: row.remarks || "",
-        }))
-      );
+      const serverRows = Array.isArray(data.deliveries) ? data.deliveries : [];
+      const mappedRows = serverRows.length
+        ? serverRows.map((row: any) => ({
+            ...initRow(),
+            receiverName: row.receiver_name || "",
+            receiverPhone: row.receiver_phone || "",
+            receiverAddress: row.receiver_address || row.delivery_address || "",
+            receiverCity: row.receiver_city || "",
+            receiverTownship: row.receiver_township || row.township || "",
+            weightKg: String(row.weight_kg ?? 0),
+            codAmount: String(row.item_price ?? 0),
+            serviceType: row.service_type || "standard",
+            itemPaymentStatus: row.item_payment_status === "PAID" ? "PAID" : "UNPAID",
+            deliveryPaymentStatus: row.delivery_payment_status === "PAID" ? "PAID" : "UNPAID",
+            merchantCharge: String(row.merchant_customer_delivery_charge ?? 0),
+            notes: row.remarks || "",
+          }))
+        : [initRow()];
+
+      setRows(mappedRows);
+      setPriceUiStates(mappedRows.map(() => initPriceUiState()));
 
       setMessage(
         action === "save_draft"
           ? `Draft saved: ${data.pickup.pickup_id}`
           : action === "submit_pickup"
             ? `Pickup submitted: ${data.pickup.pickup_id}`
-            : `Pickup saved: ${data.pickup.pickup_id}`
+            : isDeliveryMode
+              ? `Delivery saved: ${data.pickup.pickup_id}`
+              : `Pickup saved: ${data.pickup.pickup_id}`
       );
     } catch (error: any) {
-      setMessage(error?.message || "Failed to persist pickup");
+      setMessage(normalizeError(error, "Failed to persist pickup"));
     }
   }
 
@@ -509,7 +646,7 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
           <p>
             {isPickupMode
               ? "Register pickup batch information separately before entering shipment deliveries."
-              : "Register delivery records separately from pickup registration with guided receiver and charge entry."}
+              : "Register delivery rows separately while still using the linked pickup batch context."}
           </p>
         </div>
 
@@ -532,7 +669,7 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             <div>
               <div className="cd-title">Pickup Registration</div>
               <div className="cd-subtitle">
-                Fill sender information first. The system helps with registered merchant and customer data.
+                Fill sender information first and reserve the pickup batch before delivery data entry.
               </div>
             </div>
           </div>
@@ -595,14 +732,18 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             <Field label="Pickup Address" wide>
               <textarea value={pickup.pickupAddress} onChange={(e) => setPickupField("pickupAddress", e.target.value)} rows={4} />
             </Field>
+
+            <Field label="Remarks" wide>
+              <textarea value={pickup.remarks || ""} onChange={(e) => setPickupField("remarks", e.target.value)} rows={3} />
+            </Field>
           </div>
 
           <div className="cd-suggest">
             <div className="cd-suggest-title">Suggested registered sender profiles</div>
             <div className="cd-tag-wrap">
               {senderMatches.length ? (
-                senderMatches.map((match) => (
-                  <button key={match.id} className="cd-tag" onClick={() => fillSender(match.business_name)}>
+                senderMatches.map((match: any) => (
+                  <button key={match.id} className="cd-tag" type="button" onClick={() => fillSender(match.business_name)}>
                     {match.business_name} · {match.township}
                   </button>
                 ))
@@ -613,9 +754,15 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
           </div>
 
           <div className="cd-actions">
-            <button className="cd-btn secondary" onClick={() => persistPickup("save_draft")}>Save Draft</button>
-            <button className="cd-btn primary" onClick={() => persistPickup("save_pickup")}>Save Pickup</button>
-            <button className="cd-btn submit" onClick={() => persistPickup("submit_pickup")}>Submit Pickup</button>
+            <button style={{ ...cardBtn, background: "#fff", color: "#334155", border: "1px solid #cbd5e1" }} type="button" onClick={() => persistPickup("save_draft")}>
+              Save Draft
+            </button>
+            <button style={{ ...cardBtn, background: "#0f766e", color: "#fff" }} type="button" onClick={() => persistPickup("save_pickup")}>
+              Save Pickup
+            </button>
+            <button style={{ ...cardBtn, background: "#0f2f5c", color: "#fff" }} type="button" onClick={() => persistPickup("submit_pickup")}>
+              Submit Pickup
+            </button>
           </div>
 
           <datalist id="sender-master">
@@ -630,7 +777,7 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             <div>
               <div className="cd-title">Delivery Registration</div>
               <div className="cd-subtitle">
-                Register delivery rows separately. Load by pickup if you came from a pickup batch.
+                Enter delivery rows in a separate screen with tariff-driven live pricing.
               </div>
             </div>
             <div className="cd-idbox">
@@ -645,10 +792,43 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             <div><strong>Ways:</strong> {rows.length}</div>
           </div>
 
+          <div className="cd-compact">
+            <Field label="Pickup Date">
+              <input type="date" value={pickup.pickupDate} onChange={(e) => setPickupField("pickupDate", e.target.value)} />
+            </Field>
+            <Field label="Sender / Merchant">
+              <input value={pickup.businessName} onChange={(e) => setPickupField("businessName", e.target.value)} />
+            </Field>
+            <Field label="Contact Phone">
+              <input value={pickup.contactPhone} onChange={(e) => setPickupField("contactPhone", e.target.value)} />
+            </Field>
+            <Field label="Pickup City">
+              <select value={pickup.pickupCity} onChange={(e) => setPickupField("pickupCity", e.target.value)}>
+                {pickupCityOptions.map((city) => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Pickup Township">
+              <select value={pickup.pickupTownship} onChange={(e) => setPickupField("pickupTownship", e.target.value)}>
+                <option value="">Select township</option>
+                {pickupTownshipOptions.map((township: string) => (
+                  <option key={township} value={township}>{township}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Total Way Count">
+              <input type="number" min={1} value={pickup.totalWays} onChange={(e) => setPickupField("totalWays", e.target.value)} />
+            </Field>
+            <Field label="Pickup Address" wide>
+              <textarea value={pickup.pickupAddress} onChange={(e) => setPickupField("pickupAddress", e.target.value)} rows={3} />
+            </Field>
+          </div>
+
           <div className="cd-rownav">
-            <button className="cd-mini" onClick={() => setSelected((prev) => Math.max(0, prev - 1))}>Previous</button>
+            <button className="cd-mini" type="button" onClick={() => setSelected((prev) => Math.max(0, prev - 1))}>Previous</button>
             <div className="cd-rowcount">{selected + 1} / {rows.length}</div>
-            <button className="cd-mini" onClick={() => setSelected((prev) => Math.min(rows.length - 1, prev + 1))}>Next</button>
+            <button className="cd-mini" type="button" onClick={() => setSelected((prev) => Math.min(rows.length - 1, prev + 1))}>Next</button>
           </div>
 
           <div className="cd-grid">
@@ -704,7 +884,7 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
               <input type="number" min={0} value={current.codAmount} onChange={(e) => setRow({ codAmount: e.target.value })} />
             </Field>
 
-            <Field label="Merchant Delivery Charge">
+            <Field label="Merchant Collected Rate">
               <input type="number" min={0} value={current.merchantCharge} onChange={(e) => setRow({ merchantCharge: e.target.value })} />
             </Field>
 
@@ -735,8 +915,8 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             <div className="cd-suggest-title">Suggested registered receiver profiles</div>
             <div className="cd-tag-wrap">
               {receiverMatches.length ? (
-                receiverMatches.map((match) => (
-                  <button key={match.id} className="cd-tag" onClick={() => fillReceiver(match.business_name)}>
+                receiverMatches.map((match: any) => (
+                  <button key={match.id} className="cd-tag" type="button" onClick={() => fillReceiver(match.business_name)}>
                     {match.business_name} · {match.phone}
                   </button>
                 ))
@@ -746,13 +926,27 @@ export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliver
             </div>
           </div>
 
-          <div className="cd-metrics">
-            <Metric label="OS Charge" value={money(calc.os)} />
-            <Metric label="Waybill Charge" value={money(calc.wb)} />
-            <Metric label="Overweight Surcharge" value={money(calc.surcharge)} />
-            <Metric label="OS Total COD" value={money(calc.osTotal)} />
-            <Metric label="Waybill Total COD" value={money(calc.wbTotal)} />
-            <Metric label="Receivable" value={money(calc.receivable)} strong />
+          <div className="mt-6">
+            <PriceControlSection
+              breakdown={pricing}
+              merchantRate={Number(current.merchantCharge || 0)}
+              onMerchantRateChange={(next) => setRow({ merchantCharge: String(next) })}
+              statusState={currentPriceUi}
+              onStatusChange={setPriceUiState}
+              loading={pricingLoading}
+            />
+          </div>
+
+          <div className="cd-actions">
+            <button style={{ ...cardBtn, background: "#fff", color: "#334155", border: "1px solid #cbd5e1" }} type="button" onClick={() => persistPickup("save_draft")}>
+              Save Delivery Draft
+            </button>
+            <button style={{ ...cardBtn, background: "#0f766e", color: "#fff" }} type="button" onClick={() => persistPickup("save_pickup")}>
+              Save Delivery
+            </button>
+            <button style={{ ...cardBtn, background: "#0f2f5c", color: "#fff" }} type="button" onClick={() => persistPickup("submit_pickup")}>
+              Submit Delivery
+            </button>
           </div>
 
           <datalist id="receiver-master">
@@ -787,23 +981,6 @@ function Field({
   );
 }
 
-function Metric({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div className={strong ? "cd-metric strong" : "cd-metric"}>
-      <div className="cd-metric-label">{label}</div>
-      <div className="cd-metric-value">{value}</div>
-    </div>
-  );
-}
-
 const css = `
 .cd-page{display:flex;flex-direction:column;gap:18px}
 .cd-hero{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;border:1px solid #dbe4ee;border-radius:26px;background:linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);box-shadow:0 10px 24px rgba(15,23,42,.04);padding:24px;animation:fadeUp .35s ease}
@@ -815,7 +992,6 @@ const css = `
 .cd-stat-value{margin-top:10px;font-size:28px;font-weight:900;color:#0f172a;word-break:break-word}
 .cd-stat-sub{margin-top:8px;color:#64748b;font-size:12px}
 .cd-alert{border:1px solid #a5f3fc;background:#ecfeff;color:#0f766e;padding:12px 14px;border-radius:16px;font-size:13px;font-weight:700;animation:fadeUp .25s ease}
-.cd-layout{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.2fr);gap:18px}
 .cd-card{border:1px solid #dbe4ee;border-radius:24px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.04);padding:20px;transition:transform .25s ease, box-shadow .25s ease;animation:fadeUp .35s ease}
 .cd-card:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(15,23,42,.07)}
 .cd-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
@@ -826,6 +1002,7 @@ const css = `
 .cd-idbox strong{display:block;margin-top:6px;font-size:18px;color:#0f172a}
 .cd-summary{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:14px;font-size:13px;color:#475569;font-weight:700}
 .cd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.cd-compact{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
 .cd-field{display:flex;flex-direction:column;gap:6px}
 .cd-field.wide{grid-column:1 / -1}
 .cd-field span{font-size:12px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em}
@@ -837,24 +1014,13 @@ const css = `
 .cd-tag{border:1px solid #cbd5e1;border-radius:999px;background:#fff;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700;color:#334155;transition:all .2s ease}
 .cd-tag:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
 .cd-muted{color:#64748b;font-size:13px}
-.cd-actions{display:flex;gap:10px;margin-top:16px}
-.cd-btn{border:none;border-radius:14px;padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer;transition:all .22s ease}
-.cd-btn.primary{background:#0f766e;color:#fff;box-shadow:0 12px 24px rgba(15,118,110,.16)}
-.cd-btn.primary:hover{transform:translateY(-1px);box-shadow:0 16px 28px rgba(15,118,110,.22)}
-.cd-btn.secondary{background:#fff;color:#334155;border:1px solid #cbd5e1}
-.cd-btn.submit{background:#0f2f5c;color:#fff;box-shadow:0 12px 24px rgba(15,47,92,.16)}
+.cd-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 .cd-statusbar{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px;color:#475569;font-weight:700}
-.cd-rownav{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:14px}
+.cd-rownav{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:16px 0 14px}
 .cd-rowcount{font-size:13px;font-weight:800;color:#334155}
 .cd-mini{border:1px solid #dbe4ee;background:#fff;border-radius:12px;padding:9px 12px;cursor:pointer;font-size:12px;font-weight:700;color:#334155}
 .cd-mini:hover{background:#f8fafc}
-.cd-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
-.cd-metric{border:1px solid #dbe4ee;border-radius:18px;background:#fff;padding:14px;transition:transform .2s ease}
-.cd-metric:hover{transform:translateY(-2px)}
-.cd-metric.strong{background:linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)}
-.cd-metric-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#64748b}
-.cd-metric-value{margin-top:10px;font-size:18px;font-weight:900;color:#0f172a}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@media (max-width: 1180px){.cd-hero{grid-template-columns:1fr}}
-@media (max-width: 760px){.cd-grid,.cd-metrics{grid-template-columns:1fr}.cd-actions{flex-direction:column}}
+@media (max-width: 1180px){.cd-hero{grid-template-columns:1fr}.cd-compact{grid-template-columns:1fr 1fr}}
+@media (max-width: 760px){.cd-grid,.cd-compact{grid-template-columns:1fr}.cd-actions{flex-direction:column}}
 `;
