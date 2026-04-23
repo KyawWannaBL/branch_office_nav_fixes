@@ -14,6 +14,7 @@ import { statusText } from "@/lib/statusText";
 
 type SourceType = "MER" | "CUS" | "OS" | "DEO";
 type PayStatus = "PAID" | "UNPAID";
+export type CreateDeliveryMode = "pickup" | "delivery";
 
 type PickupForm = {
   pickupDate: string;
@@ -25,6 +26,8 @@ type PickupForm = {
   pickupCity: string;
   pickupTownship: string;
   totalWays: string;
+  pickupId?: string;
+  remarks?: string;
 };
 
 type DeliveryRow = {
@@ -54,6 +57,8 @@ const initPickup = (): PickupForm => ({
   pickupCity: "Yangon",
   pickupTownship: "",
   totalWays: "1",
+  pickupId: "",
+  remarks: "",
 });
 
 const initRow = (): DeliveryRow => ({
@@ -78,9 +83,9 @@ const fmtDateToken = (d: string) => {
 
 const abbr = (s: string, fallback = "GEN") => {
   const w = String(s || "")
-    .replace(/[^A-Za-z0-9\s]/g, " ")
+    .replace(/[^A-Za-z0-9\\s]/g, " ")
     .trim()
-    .split(/\s+/)
+    .split(/\\s+/)
     .filter(Boolean);
 
   if (!w.length) return fallback;
@@ -96,7 +101,7 @@ const abbr = (s: string, fallback = "GEN") => {
 
 const seqFromPickup = (x: any) => {
   const raw =
-    String(x?.pickup_id || x?.pickup_way_id || x?.pickupId || "").match(/-(\d{3,4})$/);
+    String(x?.pickup_id || x?.pickup_way_id || x?.pickupId || "").match(/-(\\d{3,4})$/);
   return raw ? Number(raw[1]) : 0;
 };
 
@@ -136,20 +141,22 @@ function pricing(r: DeliveryRow) {
   };
 }
 
-export default function CreateDelivery() {
+export function CreateDeliveryForm({ mode = "delivery" }: { mode?: CreateDeliveryMode }) {
   const { lang, t: tr } = useT();
   const [searchParams] = useSearchParams();
   const pickupIdFromQuery = searchParams.get("pickup_id") || "";
   const deliveryIdFromQuery = searchParams.get("delivery_id") || "";
-  const initialPane = searchParams.get("pane") === "delivery" ? "delivery" : "pickup";
+
   const [pickup, setPickup] = useState<PickupForm>(initPickup());
   const [rows, setRows] = useState<DeliveryRow[]>([initRow()]);
-  const [pane, setPane] = useState<"pickup" | "delivery">(initialPane);
   const [selected, setSelected] = useState(0);
   const [message, setMessage] = useState("");
   const [existingPickupId, setExistingPickupId] = useState("");
   const [pickupStatus, setPickupStatus] = useState<"DRAFT" | "SAVED" | "SUBMITTED">("DRAFT");
   const [lastSavedAt, setLastSavedAt] = useState("");
+
+  const isPickupMode = mode === "pickup";
+  const isDeliveryMode = mode === "delivery";
 
   const pickups = usePickups({ limit: "200" });
   const createPickup = useCreatePickup();
@@ -262,7 +269,6 @@ export default function CreateDelivery() {
     [rows, pickup]
   );
 
-
   useEffect(() => {
     if (!pickupIdFromQuery) {
       setExistingPickupId("");
@@ -276,10 +282,7 @@ export default function CreateDelivery() {
         const res = await fetch(`/api/v1/pickups?pickup_id=${encodeURIComponent(pickupIdFromQuery)}`);
         const data = await res.json();
 
-        if (!res.ok) {
-          throw new Error(data?.error || "Failed to load pickup");
-        }
-
+        if (!res.ok) throw new Error(data?.error || "Failed to load pickup");
         if (!active) return;
 
         const serverPickup = data?.pickup || {};
@@ -304,6 +307,7 @@ export default function CreateDelivery() {
             prev.totalWays ||
             1
           ),
+          pickupId: serverPickup.pickup_id || pickupIdFromQuery,
         }));
 
         const mappedRows = serverRows.length
@@ -331,9 +335,8 @@ export default function CreateDelivery() {
           : -1;
 
         setSelected(targetIndex >= 0 ? targetIndex : 0);
-        setPane(initialPane);
         setMessage(`Loaded ${serverPickup.pickup_id || pickupIdFromQuery}`);
-      } catch (error) {
+      } catch (error: any) {
         if (!active) return;
         setMessage(error?.message || "Failed to load pickup from overview");
       }
@@ -344,7 +347,7 @@ export default function CreateDelivery() {
     return () => {
       active = false;
     };
-  }, [pickupIdFromQuery, deliveryIdFromQuery, initialPane]);
+  }, [pickupIdFromQuery, deliveryIdFromQuery]);
 
   const calc = useMemo(() => pricing(current), [current]);
 
@@ -427,16 +430,13 @@ export default function CreateDelivery() {
     });
   };
 
-  
   async function persistPickup(action: "save_draft" | "save_pickup" | "submit_pickup") {
     setMessage("");
 
     try {
       const res = await fetch("/api/v1/pickups", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
           pickup: {
@@ -505,11 +505,11 @@ export default function CreateDelivery() {
       <section className="cd-hero">
         <div className="cd-hero-left">
           <div className="cd-chip">Enterprise Delivery Workspace</div>
-          <h1>Enterprise Pickup and Delivery Registration</h1>
+          <h1>{isPickupMode ? "Pickup Registration" : "Delivery Registration"}</h1>
           <p>
-            Structured pickup and delivery data-entry with separated containers,
-            guided master-data lookup, controlled city and township values, and
-            auto-generated Pickup and Delivery IDs.
+            {isPickupMode
+              ? "Register pickup batch information separately before entering shipment deliveries."
+              : "Register delivery records separately from pickup registration with guided receiver and charge entry."}
           </p>
         </div>
 
@@ -517,53 +517,33 @@ export default function CreateDelivery() {
           <div className="cd-stat-label">Pickup ID</div>
           <div className="cd-stat-value">{pickupId}</div>
           <div className="cd-stat-sub">Auto-preview based on date and sender profile</div>
-          <div className="cd-statusbar"><div><strong>Status:</strong> {pickupStatus}</div><div><strong>Last saved:</strong> {lastSavedAt ? new Date(lastSavedAt).toLocaleString() : "-"}</div></div>
+          <div className="cd-statusbar">
+            <div><strong>Status:</strong> {pickupStatus}</div>
+            <div><strong>Last saved:</strong> {lastSavedAt ? new Date(lastSavedAt).toLocaleString() : "-"}</div>
+          </div>
         </div>
-      </section>
-
-      <section className="cd-switcher">
-        <button
-          className={pane === "pickup" ? "cd-switch active" : "cd-switch"}
-          onClick={() => setPane("pickup")}
-        >
-          Pickup Batch
-        </button>
-        <button
-          className={pane === "delivery" ? "cd-switch active" : "cd-switch"}
-          onClick={() => setPane("delivery")}
-        >
-          Delivery Data Entry
-        </button>
       </section>
 
       {message ? <div className="cd-alert">{message}</div> : null}
 
-      <div className="cd-layout">
+      {isPickupMode ? (
         <section className="cd-card">
           <div className="cd-card-head">
             <div>
-              <div className="cd-title">Pickup Container</div>
+              <div className="cd-title">Pickup Registration</div>
               <div className="cd-subtitle">
-                Fill sender information first. The system helps with registered
-                merchant and customer data.
+                Fill sender information first. The system helps with registered merchant and customer data.
               </div>
             </div>
           </div>
 
           <div className="cd-grid">
             <Field label="Pickup Date">
-              <input
-                type="date"
-                value={pickup.pickupDate}
-                onChange={(e) => setPickupField("pickupDate", e.target.value)}
-              />
+              <input type="date" value={pickup.pickupDate} onChange={(e) => setPickupField("pickupDate", e.target.value)} />
             </Field>
 
             <Field label="Source Type">
-              <select
-                value={pickup.sourceType}
-                onChange={(e) => setPickupField("sourceType", e.target.value)}
-              >
+              <select value={pickup.sourceType} onChange={(e) => setPickupField("sourceType", e.target.value)}>
                 <option value="MER">Merchant</option>
                 <option value="CUS">Customer</option>
                 <option value="OS">Online Store</option>
@@ -584,61 +564,36 @@ export default function CreateDelivery() {
             </Field>
 
             <Field label="Contact Name">
-              <input
-                value={pickup.contactName}
-                onChange={(e) => setPickupField("contactName", e.target.value)}
-              />
+              <input value={pickup.contactName} onChange={(e) => setPickupField("contactName", e.target.value)} />
             </Field>
 
             <Field label="Phone Number">
-              <input
-                value={pickup.contactPhone}
-                onChange={(e) => setPickupField("contactPhone", e.target.value)}
-              />
+              <input value={pickup.contactPhone} onChange={(e) => setPickupField("contactPhone", e.target.value)} />
             </Field>
 
             <Field label="Pickup City">
-              <select
-                value={pickup.pickupCity}
-                onChange={(e) => setPickupField("pickupCity", e.target.value)}
-              >
+              <select value={pickup.pickupCity} onChange={(e) => setPickupField("pickupCity", e.target.value)}>
                 {pickupCityOptions.map((city) => (
-                  <option key={city} value={city}>
-                    {city}
-                  </option>
+                  <option key={city} value={city}>{city}</option>
                 ))}
               </select>
             </Field>
 
             <Field label="Pickup Township">
-              <select
-                value={pickup.pickupTownship}
-                onChange={(e) => setPickupField("pickupTownship", e.target.value)}
-              >
+              <select value={pickup.pickupTownship} onChange={(e) => setPickupField("pickupTownship", e.target.value)}>
                 <option value="">Select township</option>
                 {pickupTownshipOptions.map((township: string) => (
-                  <option key={township} value={township}>
-                    {township}
-                  </option>
+                  <option key={township} value={township}>{township}</option>
                 ))}
               </select>
             </Field>
 
             <Field label="Total Way Count">
-              <input
-                type="number"
-                min={1}
-                value={pickup.totalWays}
-                onChange={(e) => setPickupField("totalWays", e.target.value)}
-              />
+              <input type="number" min={1} value={pickup.totalWays} onChange={(e) => setPickupField("totalWays", e.target.value)} />
             </Field>
 
             <Field label="Pickup Address" wide>
-              <textarea
-                value={pickup.pickupAddress}
-                onChange={(e) => setPickupField("pickupAddress", e.target.value)}
-                rows={4}
-              />
+              <textarea value={pickup.pickupAddress} onChange={(e) => setPickupField("pickupAddress", e.target.value)} rows={4} />
             </Field>
           </div>
 
@@ -647,11 +602,7 @@ export default function CreateDelivery() {
             <div className="cd-tag-wrap">
               {senderMatches.length ? (
                 senderMatches.map((match) => (
-                  <button
-                    key={match.id}
-                    className="cd-tag"
-                    onClick={() => fillSender(match.business_name)}
-                  >
+                  <button key={match.id} className="cd-tag" onClick={() => fillSender(match.business_name)}>
                     {match.business_name} · {match.township}
                   </button>
                 ))
@@ -662,15 +613,9 @@ export default function CreateDelivery() {
           </div>
 
           <div className="cd-actions">
-            <button className="cd-btn secondary" onClick={() => persistPickup("save_draft")}>
-              Save Draft
-            </button>
-            <button className="cd-btn primary" onClick={() => persistPickup("save_pickup")}>
-              Save Pickup
-            </button>
-            <button className="cd-btn submit" onClick={() => persistPickup("submit_pickup")}>
-              Submit Pickup
-            </button>
+            <button className="cd-btn secondary" onClick={() => persistPickup("save_draft")}>Save Draft</button>
+            <button className="cd-btn primary" onClick={() => persistPickup("save_pickup")}>Save Pickup</button>
+            <button className="cd-btn submit" onClick={() => persistPickup("submit_pickup")}>Submit Pickup</button>
           </div>
 
           <datalist id="sender-master">
@@ -679,39 +624,31 @@ export default function CreateDelivery() {
             ))}
           </datalist>
         </section>
-
+      ) : (
         <section className="cd-card">
           <div className="cd-card-head">
             <div>
-              <div className="cd-title">Delivery Container</div>
+              <div className="cd-title">Delivery Registration</div>
               <div className="cd-subtitle">
-                Select each delivery row, fill receiver information, and review
-                backend-style charge preview.
+                Register delivery rows separately. Load by pickup if you came from a pickup batch.
               </div>
             </div>
-
             <div className="cd-idbox">
               <span>Delivery ID</span>
               <strong>{deliveryIds[selected] || "-"}</strong>
             </div>
           </div>
 
+          <div className="cd-summary">
+            <div><strong>Pickup:</strong> {pickupId || "-"}</div>
+            <div><strong>Sender:</strong> {pickup.businessName || "-"}</div>
+            <div><strong>Ways:</strong> {rows.length}</div>
+          </div>
+
           <div className="cd-rownav">
-            <button
-              className="cd-mini"
-              onClick={() => setSelected((prev) => Math.max(0, prev - 1))}
-            >
-              Previous
-            </button>
-            <div className="cd-rowcount">
-              {selected + 1} / {rows.length}
-            </div>
-            <button
-              className="cd-mini"
-              onClick={() => setSelected((prev) => Math.min(rows.length - 1, prev + 1))}
-            >
-              Next
-            </button>
+            <button className="cd-mini" onClick={() => setSelected((prev) => Math.max(0, prev - 1))}>Previous</button>
+            <div className="cd-rowcount">{selected + 1} / {rows.length}</div>
+            <button className="cd-mini" onClick={() => setSelected((prev) => Math.min(rows.length - 1, prev + 1))}>Next</button>
           </div>
 
           <div className="cd-grid">
@@ -728,122 +665,69 @@ export default function CreateDelivery() {
             </Field>
 
             <Field label="Receiver Phone">
-              <input
-                value={current.receiverPhone}
-                onChange={(e) => setRow({ receiverPhone: e.target.value })}
-              />
+              <input value={current.receiverPhone} onChange={(e) => setRow({ receiverPhone: e.target.value })} />
             </Field>
 
             <Field label="Receiver City">
               <select
                 value={current.receiverCity}
-                onChange={(e) =>
-                  setRow({
-                    receiverCity: e.target.value,
-                    receiverTownship: "",
-                  })
-                }
+                onChange={(e) => setRow({ receiverCity: e.target.value, receiverTownship: "" })}
               >
-                {pickupCityOptions.map((city) => (
-                  <option key={city} value={city}>
-                    {city}
-                  </option>
+                {receiverCityOptions.map((city) => (
+                  <option key={city} value={city}>{city}</option>
                 ))}
               </select>
             </Field>
 
             <Field label="Receiver Township">
-              <select
-                value={current.receiverTownship}
-                onChange={(e) => setRow({ receiverTownship: e.target.value })}
-              >
+              <select value={current.receiverTownship} onChange={(e) => setRow({ receiverTownship: e.target.value })}>
                 <option value="">Select township</option>
                 {receiverTownshipOptions.map((township: string) => (
-                  <option key={township} value={township}>
-                    {township}
-                  </option>
+                  <option key={township} value={township}>{township}</option>
                 ))}
               </select>
             </Field>
 
             <Field label="Weight (Kg)">
-              <input
-                type="number"
-                min={0}
-                value={current.weightKg}
-                onChange={(e) => setRow({ weightKg: e.target.value })}
-              />
+              <input type="number" min={0} value={current.weightKg} onChange={(e) => setRow({ weightKg: e.target.value })} />
             </Field>
 
             <Field label="Service Type">
-              <select
-                value={current.serviceType}
-                onChange={(e) => setRow({ serviceType: e.target.value })}
-              >
+              <select value={current.serviceType} onChange={(e) => setRow({ serviceType: e.target.value })}>
                 {serviceOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </Field>
 
             <Field label="Item Price">
-              <input
-                type="number"
-                min={0}
-                value={current.codAmount}
-                onChange={(e) => setRow({ codAmount: e.target.value })}
-              />
+              <input type="number" min={0} value={current.codAmount} onChange={(e) => setRow({ codAmount: e.target.value })} />
             </Field>
 
             <Field label="Merchant Delivery Charge">
-              <input
-                type="number"
-                min={0}
-                value={current.merchantCharge}
-                onChange={(e) => setRow({ merchantCharge: e.target.value })}
-              />
+              <input type="number" min={0} value={current.merchantCharge} onChange={(e) => setRow({ merchantCharge: e.target.value })} />
             </Field>
 
             <Field label="Item Payment">
-              <select
-                value={current.itemPaymentStatus}
-                onChange={(e) =>
-                  setRow({ itemPaymentStatus: e.target.value as PayStatus })
-                }
-              >
+              <select value={current.itemPaymentStatus} onChange={(e) => setRow({ itemPaymentStatus: e.target.value as PayStatus })}>
                 <option value="PAID">Paid</option>
                 <option value="UNPAID">Unpaid</option>
               </select>
             </Field>
 
             <Field label="Delivery Payment">
-              <select
-                value={current.deliveryPaymentStatus}
-                onChange={(e) =>
-                  setRow({ deliveryPaymentStatus: e.target.value as PayStatus })
-                }
-              >
+              <select value={current.deliveryPaymentStatus} onChange={(e) => setRow({ deliveryPaymentStatus: e.target.value as PayStatus })}>
                 <option value="PAID">Paid</option>
                 <option value="UNPAID">Unpaid</option>
               </select>
             </Field>
 
             <Field label="Receiver Address" wide>
-              <textarea
-                value={current.receiverAddress}
-                onChange={(e) => setRow({ receiverAddress: e.target.value })}
-                rows={4}
-              />
+              <textarea value={current.receiverAddress} onChange={(e) => setRow({ receiverAddress: e.target.value })} rows={4} />
             </Field>
 
             <Field label="Notes" wide>
-              <textarea
-                value={current.notes}
-                onChange={(e) => setRow({ notes: e.target.value })}
-                rows={3}
-              />
+              <textarea value={current.notes} onChange={(e) => setRow({ notes: e.target.value })} rows={3} />
             </Field>
           </div>
 
@@ -852,11 +736,7 @@ export default function CreateDelivery() {
             <div className="cd-tag-wrap">
               {receiverMatches.length ? (
                 receiverMatches.map((match) => (
-                  <button
-                    key={match.id}
-                    className="cd-tag"
-                    onClick={() => fillReceiver(match.business_name)}
-                  >
+                  <button key={match.id} className="cd-tag" onClick={() => fillReceiver(match.business_name)}>
                     {match.business_name} · {match.phone}
                   </button>
                 ))
@@ -881,9 +761,13 @@ export default function CreateDelivery() {
             ))}
           </datalist>
         </section>
-      </div>
+      )}
     </div>
   );
+}
+
+export default function CreateDelivery() {
+  return <CreateDeliveryForm mode="delivery" />;
 }
 
 function Field({
@@ -921,358 +805,56 @@ function Metric({
 }
 
 const css = `
-.cd-page{
-  display:flex;
-  flex-direction:column;
-  gap:18px;
-}
-.cd-hero{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 260px;
-  gap:18px;
-  border:1px solid #dbe4ee;
-  border-radius:26px;
-  background:linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);
-  box-shadow:0 10px 24px rgba(15,23,42,.04);
-  padding:24px;
-  animation:fadeUp .35s ease;
-}
-.cd-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:8px 12px;
-  border-radius:999px;
-  background:#eff6ff;
-  color:#1d4ed8;
-  font-size:12px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.12em;
-}
-.cd-hero h1{
-  margin:14px 0 0;
-  font-size:32px;
-  line-height:1.1;
-  font-weight:900;
-  color:#0f172a;
-}
-.cd-hero p{
-  margin:10px 0 0;
-  color:#64748b;
-  font-size:14px;
-  line-height:1.7;
-}
-.cd-hero-right{
-  border:1px solid #dbe4ee;
-  border-radius:20px;
-  background:#f8fafc;
-  padding:18px;
-  align-self:start;
-}
-.cd-stat-label{
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.14em;
-  color:#64748b;
-}
-.cd-stat-value{
-  margin-top:10px;
-  font-size:28px;
-  font-weight:900;
-  color:#0f172a;
-  word-break:break-word;
-}
-.cd-stat-sub{
-  margin-top:8px;
-  color:#64748b;
-  font-size:12px;
-}
-.cd-switcher{
-  display:flex;
-  gap:8px;
-  border:1px solid #dbe4ee;
-  border-radius:22px;
-  background:#fff;
-  box-shadow:0 8px 20px rgba(15,23,42,.03);
-  padding:8px;
-}
-.cd-switch{
-  flex:1;
-  border:none;
-  border-radius:16px;
-  background:transparent;
-  color:#475569;
-  font-weight:800;
-  padding:14px 18px;
-  cursor:pointer;
-  transition:all .25s ease;
-}
-.cd-switch.active{
-  background:#0f2f5c;
-  color:#fff;
-  box-shadow:0 12px 24px rgba(15,47,92,.18);
-}
-.cd-alert{
-  border:1px solid #a5f3fc;
-  background:#ecfeff;
-  color:#0f766e;
-  padding:12px 14px;
-  border-radius:16px;
-  font-size:13px;
-  font-weight:700;
-  animation:fadeUp .25s ease;
-}
-.cd-layout{
-  display:grid;
-  grid-template-columns:minmax(360px,.95fr) minmax(0,1.2fr);
-  gap:18px;
-}
-.cd-card{
-  border:1px solid #dbe4ee;
-  border-radius:24px;
-  background:#fff;
-  box-shadow:0 10px 24px rgba(15,23,42,.04);
-  padding:20px;
-  transition:transform .25s ease, box-shadow .25s ease;
-  animation:fadeUp .35s ease;
-}
-.cd-card:hover{
-  transform:translateY(-2px);
-  box-shadow:0 16px 34px rgba(15,23,42,.07);
-}
-.cd-card-head{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:12px;
-  margin-bottom:16px;
-}
-.cd-title{
-  font-size:22px;
-  font-weight:900;
-  color:#0f172a;
-}
-.cd-subtitle{
-  margin-top:4px;
-  font-size:13px;
-  color:#64748b;
-}
-.cd-idbox{
-  border:1px solid #dbe4ee;
-  border-radius:16px;
-  background:#f8fafc;
-  padding:12px 14px;
-  min-width:170px;
-}
-.cd-idbox span{
-  display:block;
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.14em;
-  color:#64748b;
-}
-.cd-idbox strong{
-  display:block;
-  margin-top:6px;
-  font-size:18px;
-  color:#0f172a;
-}
-.cd-grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:14px;
-}
-.cd-field{
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-}
-.cd-field.wide{
-  grid-column:1 / -1;
-}
-.cd-field span{
-  font-size:12px;
-  font-weight:800;
-  color:#475569;
-  text-transform:uppercase;
-  letter-spacing:.04em;
-}
-.cd-field input,
-.cd-field select,
-.cd-field textarea{
-  width:100%;
-  border:1px solid #cbd5e1;
-  border-radius:14px;
-  padding:12px 14px;
-  font-size:14px;
-  font-family:inherit;
-  background:#fff;
-  outline:none;
-  transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
-}
-.cd-field input:focus,
-.cd-field select:focus,
-.cd-field textarea:focus{
-  border-color:#60a5fa;
-  box-shadow:0 0 0 4px rgba(96,165,250,.12);
-}
-.cd-suggest{
-  margin-top:16px;
-  border:1px solid #e2e8f0;
-  border-radius:18px;
-  background:#f8fafc;
-  padding:14px;
-}
-.cd-suggest-title{
-  font-size:12px;
-  font-weight:800;
-  color:#475569;
-  text-transform:uppercase;
-  letter-spacing:.04em;
-}
-.cd-tag-wrap{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-top:12px;
-}
-.cd-tag{
-  border:1px solid #cbd5e1;
-  border-radius:999px;
-  background:#fff;
-  padding:8px 12px;
-  cursor:pointer;
-  font-size:12px;
-  font-weight:700;
-  color:#334155;
-  transition:all .2s ease;
-}
-.cd-tag:hover{
-  background:#eff6ff;
-  border-color:#93c5fd;
-  color:#1d4ed8;
-}
-.cd-muted{
-  color:#64748b;
-  font-size:13px;
-}
-.cd-actions{
-  display:flex;
-  gap:10px;
-  margin-top:16px;
-}
-.cd-btn{
-  border:none;
-  border-radius:14px;
-  padding:12px 18px;
-  font-size:14px;
-  font-weight:800;
-  cursor:pointer;
-  transition:all .22s ease;
-}
-.cd-btn.primary{
-  background:#0f766e;
-  color:#fff;
-  box-shadow:0 12px 24px rgba(15,118,110,.16);
-}
-.cd-btn.primary:hover{
-  transform:translateY(-1px);
-  box-shadow:0 16px 28px rgba(15,118,110,.22);
-}
-.cd-btn.secondary{
-  background:#fff;
-  color:#334155;
-  border:1px solid #cbd5e1;
-}
-.cd-btn.submit{
-  background:#0f2f5c;
-  color:#fff;
-  box-shadow:0 12px 24px rgba(15,47,92,.16);
-}
-.cd-statusbar{
-  display:flex;
-  flex-wrap:wrap;
-  gap:16px;
-  margin-top:12px;
-  font-size:13px;
-  color:#475569;
-  font-weight:700;
-}
-.cd-rownav{
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:10px;
-  margin-bottom:14px;
-}
-.cd-rowcount{
-  font-size:13px;
-  font-weight:800;
-  color:#334155;
-}
-.cd-mini{
-  border:1px solid #dbe4ee;
-  background:#fff;
-  border-radius:12px;
-  padding:9px 12px;
-  cursor:pointer;
-  font-size:12px;
-  font-weight:700;
-  color:#334155;
-}
-.cd-mini:hover{
-  background:#f8fafc;
-}
-.cd-metrics{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
-  margin-top:18px;
-}
-.cd-metric{
-  border:1px solid #dbe4ee;
-  border-radius:18px;
-  background:#fff;
-  padding:14px;
-  transition:transform .2s ease;
-}
-.cd-metric:hover{
-  transform:translateY(-2px);
-}
-.cd-metric.strong{
-  background:linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%);
-}
-.cd-metric-label{
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-  color:#64748b;
-}
-.cd-metric-value{
-  margin-top:10px;
-  font-size:18px;
-  font-weight:900;
-  color:#0f172a;
-}
-@keyframes fadeUp{
-  from{opacity:0;transform:translateY(8px)}
-  to{opacity:1;transform:translateY(0)}
-}
-@media (max-width: 1180px){
-  .cd-layout{
-    grid-template-columns:1fr;
-  }
-  .cd-hero{
-    grid-template-columns:1fr;
-  }
-}
-@media (max-width: 760px){
-  .cd-grid,
-  .cd-metrics{
-    grid-template-columns:1fr;
-  }
-}
+.cd-page{display:flex;flex-direction:column;gap:18px}
+.cd-hero{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;border:1px solid #dbe4ee;border-radius:26px;background:linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);box-shadow:0 10px 24px rgba(15,23,42,.04);padding:24px;animation:fadeUp .35s ease}
+.cd-chip{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
+.cd-hero h1{margin:14px 0 0;font-size:32px;line-height:1.1;font-weight:900;color:#0f172a}
+.cd-hero p{margin:10px 0 0;color:#64748b;font-size:14px;line-height:1.7}
+.cd-hero-right{border:1px solid #dbe4ee;border-radius:20px;background:#f8fafc;padding:18px;align-self:start}
+.cd-stat-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#64748b}
+.cd-stat-value{margin-top:10px;font-size:28px;font-weight:900;color:#0f172a;word-break:break-word}
+.cd-stat-sub{margin-top:8px;color:#64748b;font-size:12px}
+.cd-alert{border:1px solid #a5f3fc;background:#ecfeff;color:#0f766e;padding:12px 14px;border-radius:16px;font-size:13px;font-weight:700;animation:fadeUp .25s ease}
+.cd-layout{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.2fr);gap:18px}
+.cd-card{border:1px solid #dbe4ee;border-radius:24px;background:#fff;box-shadow:0 10px 24px rgba(15,23,42,.04);padding:20px;transition:transform .25s ease, box-shadow .25s ease;animation:fadeUp .35s ease}
+.cd-card:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(15,23,42,.07)}
+.cd-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.cd-title{font-size:22px;font-weight:900;color:#0f172a}
+.cd-subtitle{margin-top:4px;font-size:13px;color:#64748b}
+.cd-idbox{border:1px solid #dbe4ee;border-radius:16px;background:#f8fafc;padding:12px 14px;min-width:170px}
+.cd-idbox span{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#64748b}
+.cd-idbox strong{display:block;margin-top:6px;font-size:18px;color:#0f172a}
+.cd-summary{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:14px;font-size:13px;color:#475569;font-weight:700}
+.cd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.cd-field{display:flex;flex-direction:column;gap:6px}
+.cd-field.wide{grid-column:1 / -1}
+.cd-field span{font-size:12px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em}
+.cd-field input,.cd-field select,.cd-field textarea{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px 14px;font-size:14px;font-family:inherit;background:#fff;outline:none;transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease}
+.cd-field input:focus,.cd-field select:focus,.cd-field textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.12)}
+.cd-suggest{margin-top:16px;border:1px solid #e2e8f0;border-radius:18px;background:#f8fafc;padding:14px}
+.cd-suggest-title{font-size:12px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em}
+.cd-tag-wrap{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.cd-tag{border:1px solid #cbd5e1;border-radius:999px;background:#fff;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700;color:#334155;transition:all .2s ease}
+.cd-tag:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
+.cd-muted{color:#64748b;font-size:13px}
+.cd-actions{display:flex;gap:10px;margin-top:16px}
+.cd-btn{border:none;border-radius:14px;padding:12px 18px;font-size:14px;font-weight:800;cursor:pointer;transition:all .22s ease}
+.cd-btn.primary{background:#0f766e;color:#fff;box-shadow:0 12px 24px rgba(15,118,110,.16)}
+.cd-btn.primary:hover{transform:translateY(-1px);box-shadow:0 16px 28px rgba(15,118,110,.22)}
+.cd-btn.secondary{background:#fff;color:#334155;border:1px solid #cbd5e1}
+.cd-btn.submit{background:#0f2f5c;color:#fff;box-shadow:0 12px 24px rgba(15,47,92,.16)}
+.cd-statusbar{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px;color:#475569;font-weight:700}
+.cd-rownav{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:14px}
+.cd-rowcount{font-size:13px;font-weight:800;color:#334155}
+.cd-mini{border:1px solid #dbe4ee;background:#fff;border-radius:12px;padding:9px 12px;cursor:pointer;font-size:12px;font-weight:700;color:#334155}
+.cd-mini:hover{background:#f8fafc}
+.cd-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}
+.cd-metric{border:1px solid #dbe4ee;border-radius:18px;background:#fff;padding:14px;transition:transform .2s ease}
+.cd-metric:hover{transform:translateY(-2px)}
+.cd-metric.strong{background:linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)}
+.cd-metric-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#64748b}
+.cd-metric-value{margin-top:10px;font-size:18px;font-weight:900;color:#0f172a}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media (max-width: 1180px){.cd-hero{grid-template-columns:1fr}}
+@media (max-width: 760px){.cd-grid,.cd-metrics{grid-template-columns:1fr}.cd-actions{flex-direction:column}}
 `;

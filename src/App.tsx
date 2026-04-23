@@ -32,6 +32,8 @@ const DailyConsolidation = lazy(() => import("./pages/DailyConsolidation"));
 const PickupDeliveryOverview = lazy(() => import("./pages/PickupDeliveryOverview"));
 const PickupControlCenter = lazy(() => import("./pages/PickupControlCenter"));
 const TariffMaster = lazy(() => import("./pages/TariffMaster"));
+const PickupRegistration = lazy(() => import("./pages/PickupRegistration"));
+const DeliveryRegistration = lazy(() => import("./pages/DeliveryRegistration"));
 
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
@@ -50,7 +52,9 @@ function PortalRoutes() {
             <Route path="/unauthorized" element={<Navigate to="/dashboard" replace />} />
 
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/create-delivery" element={<CreateDelivery />} />
+            <Route path="/pickup-registration" element={<PickupRegistration />} />
+           <Route path="/delivery-registration" element={<DeliveryRegistration />} />
+           <Route path="/create-delivery" element={<Navigate to="/delivery-registration" replace />} />
             <Route path="/way-management" element={<WayManagement />} />
 
             <Route path="/delivery-workflow" element={<DeliveryWorkflowOperations />} />

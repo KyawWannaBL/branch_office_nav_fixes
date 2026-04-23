@@ -36,7 +36,8 @@ const sections: NavSection[] = [
     label: "General",
     items: [
       { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-      { title: "Create Delivery", path: "/create-delivery", icon: Package },
+      { title: "Pickup Registration", path: "/pickup-registration", icon: Package },
+      { title: "Delivery Registration", path: "/delivery-registration", icon: Package },
       { title: "Way Management", path: "/way-management", icon: Package },
     ],
   },
