@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
+import { appendActorQuery } from "@/lib/actorIdentity";
+import { useRoleAccess } from "@/hooks/useRoleAccess";
 
 const card: React.CSSProperties = {
   border: "1px solid #dbe4ee",
@@ -21,6 +23,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function FinanceExportPack() {
   const { t: tr } = useT();
+  const access = useRoleAccess();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [riderName, setRiderName] = useState("");
@@ -31,6 +34,7 @@ export default function FinanceExportPack() {
     if (dateTo) qs.set("date_to", dateTo);
     if (riderName) qs.set("rider_name", riderName);
     qs.set("pack", pack);
+    appendActorQuery(qs);
     window.open(`/api/v1/exports/finance-pack?${qs.toString()}`, "_blank", "noopener,noreferrer");
   }
 
@@ -83,7 +87,7 @@ function ExportCard({ title, desc, onClick }: { title: string; desc: string; onC
       <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{title}</div>
       <div style={{ marginTop: 8, color: "#64748b", lineHeight: 1.7 }}>{desc}</div>
       <button
-        onClick={onClick}
+        onClick={access.can("finance.export") ? onClick : undefined}
         style={{
           marginTop: 16,
           border: "none",

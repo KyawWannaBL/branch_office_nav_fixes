@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { writeAuditLog } from "../../_lib/auditLog";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);
@@ -103,6 +104,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
     }
+
+    await writeAuditLog({
+      req,
+      action: "dispatch.batch.closeout",
+      resourceType: "dispatch_batch",
+      resourceId: dispatchBatchId,
+      targetStatus: updateRes.data.status,
+      payload: body,
+      beforeState: batchRes.data,
+      afterState: updateRes.data,
+    });
 
     return send(res, 200, { ok: true, data: updateRes.data });
   } catch (error: any) {

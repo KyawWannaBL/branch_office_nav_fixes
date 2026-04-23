@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { writeAuditLog } from "../../_lib/auditLog";
 
 function esc(value: unknown) {
   return String(value ?? "")
@@ -176,6 +177,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (result.error) return res.status(500).send(result.error.message);
     if (!result.data) return res.status(404).send("Dispatch batch not found");
+
+    await writeAuditLog({
+      req,
+      action: "dispatch.batch.closeout.print",
+      resourceType: "dispatch_batch",
+      resourceId: dispatchBatchId,
+      afterState: result.data,
+    });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(page(result.data));

@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { statusText } from "@/lib/statusText";
 import { translateMessage } from "@/lib/translateMessage";
+import { actorRequestHeaders, appendActorQuery } from "@/lib/actorIdentity";
+import { useRoleAccess } from "@/hooks/useRoleAccess";
 
 const card: React.CSSProperties = {
   border: "1px solid #dbe4ee",
@@ -32,6 +34,7 @@ function money(v: any) {
 
 export default function WayManagement() {
   const { lang, t: tr } = useT();
+  const access = useRoleAccess();
 
   const [tab, setTab] = useState<"queue" | "bulk" | "rider" | "route" | "dispatch" | "print" | "scan" | "dispatchscan" | "closeout" | "history">("queue");
   const [rows, setRows] = useState<any[]>([]);
@@ -130,7 +133,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/dispatch-batches", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           delivery_ids: selectedIds,
           dispatch_date: dispatchDate,
@@ -175,7 +178,7 @@ export default function WayManagement() {
 
       const res = await fetch("/api/v1/ways/sequence", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({ items: payload }),
       });
       const data = await res.json();
@@ -210,7 +213,7 @@ export default function WayManagement() {
 
       const res = await fetch("/api/v1/ways/sequence", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({ items: payload }),
       });
       const data = await res.json();
@@ -258,7 +261,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/bulk-update", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({ delivery_ids: selectedIds, to_status: bulkStatus, note: bulkNote }),
       });
       const data = await res.json();
@@ -275,7 +278,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/assign-rider", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           delivery_ids: selectedIds,
           rider_name: riderName,
@@ -299,7 +302,11 @@ export default function WayManagement() {
       setMessage("No dispatch batch selected.");
       return;
     }
-    const url = `/api/v1/ways/print-layout?type=${encodeURIComponent(type)}&dispatch_batch_id=${encodeURIComponent(selectedPrintBatchId)}`;
+    const qs = new URLSearchParams();
+    qs.set("type", type);
+    qs.set("dispatch_batch_id", selectedPrintBatchId);
+    appendActorQuery(qs);
+    const url = `/api/v1/ways/print-layout?${qs.toString()}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -309,7 +316,11 @@ export default function WayManagement() {
       setMessage("No records found for this queue.");
       return;
     }
-    const url = `/api/v1/ways/print-layout?type=${encodeURIComponent(type)}&delivery_ids=${encodeURIComponent(ids)}`;
+    const qs = new URLSearchParams();
+    qs.set("type", type);
+    qs.set("delivery_ids", ids);
+    appendActorQuery(qs);
+    const url = `/api/v1/ways/print-layout?${qs.toString()}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -318,7 +329,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/manifest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           delivery_ids: selectedIds,
           print_type: printType,
@@ -342,7 +353,10 @@ export default function WayManagement() {
       setMessage("No dispatch batch selected.");
       return;
     }
-    window.open(`/api/v1/ways/dispatch-closeout-print?dispatch_batch_id=${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+    const qs = new URLSearchParams();
+    qs.set("dispatch_batch_id", id);
+    appendActorQuery(qs);
+    window.open(`/api/v1/ways/dispatch-closeout-print?${qs.toString()}`, "_blank", "noopener,noreferrer");
   }
 
   async function runDispatchCloseout() {
@@ -350,7 +364,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/dispatch-closeout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           dispatch_batch_id: closeoutBatchId,
           returned_by: closeoutReturnedBy,
@@ -373,7 +387,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/dispatch-scan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           dispatch_batch_id: dispatchScanCode,
           scanned_by: dispatchScannedBy,
@@ -396,7 +410,7 @@ export default function WayManagement() {
     try {
       const res = await fetch("/api/v1/ways/scan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           scan_code: scanCode,
           scan_type: scanType,
@@ -555,7 +569,7 @@ export default function WayManagement() {
                 ))}
               </select>
               <textarea style={{ ...inputStyle, minHeight: 100 }} placeholder={tr("Notes / Remarks")} value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} />
-              <button style={primaryBtn} onClick={runBulkStatus}>{tr("Apply")}</button>
+              <button style={{ ...primaryBtn, opacity: access.can("way.bulk.update") ? 1 : 0.55, cursor: access.can("way.bulk.update") ? "pointer" : "not-allowed" }} disabled={!access.can("way.bulk.update")} onClick={runBulkStatus}>{tr("Apply")}</button>
             </>
           )}
 
@@ -566,7 +580,7 @@ export default function WayManagement() {
               <input style={inputStyle} placeholder={tr("Rider Name")} value={riderName} onChange={(e) => setRiderName(e.target.value)} />
               <input style={inputStyle} placeholder={tr("Rider Phone")} value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
               <textarea style={{ ...inputStyle, minHeight: 100 }} placeholder={tr("Notes / Remarks")} value={riderNote} onChange={(e) => setRiderNote(e.target.value)} />
-              <button style={primaryBtn} onClick={runAssignRider}>{tr("Assign Rider")}</button>
+              <button style={{ ...primaryBtn, opacity: access.can("way.assign.rider") ? 1 : 0.55, cursor: access.can("way.assign.rider") ? "pointer" : "not-allowed" }} disabled={!access.can("way.assign.rider")} onClick={runAssignRider}>{tr("Assign Rider")}</button>
             </>
           )}
 
@@ -644,7 +658,7 @@ export default function WayManagement() {
                     )}
                   </div>
 
-                  <button style={primaryBtn} onClick={saveSequencePlan}>{tr("Save Route Sequence")}</button>
+                  <button style={{ ...primaryBtn, opacity: access.can("route.sequence.save") ? 1 : 0.55, cursor: access.can("route.sequence.save") ? "pointer" : "not-allowed" }} disabled={!access.can("route.sequence.save")} onClick={saveSequencePlan}>{tr("Save Route Sequence")}</button>
                 </div>
               </div>
             </>
@@ -665,7 +679,7 @@ export default function WayManagement() {
               </div>
               <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={dispatchNote} onChange={(e) => setDispatchNote(e.target.value)} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button style={primaryBtn} onClick={createDispatchBatch}>{tr("Create Dispatch Batch")}</button>
+                <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.create") ? 1 : 0.55, cursor: access.can("dispatch.batch.create") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.create")} onClick={createDispatchBatch}>{tr("Create Dispatch Batch")}</button>
                 <button style={secondaryBtn} onClick={loadDispatchBatches}>{tr("Refresh")}</button>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflow: "auto" }}>
@@ -701,9 +715,9 @@ export default function WayManagement() {
 
               <div style={{ fontSize: 14, fontWeight: 800, color: "#334155" }}>{tr("Print from selected way IDs")}</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button style={primaryBtn} onClick={() => { openPrintLayout("MANIFEST"); logPrint("WAYBILL"); }}>{tr("Print Waybill")}</button>
-                <button style={secondaryBtn} onClick={() => { openPrintLayout("MANIFEST"); logPrint("MANIFEST"); }}>{tr("Print Manifest")}</button>
-                <button style={secondaryBtn} onClick={() => { openPrintLayout("ROUTE_SHEET"); logPrint("ROUTE_SHEET"); }}>{tr("Print Route Sheet")}</button>
+                <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={() => { openPrintLayout("MANIFEST"); logPrint("WAYBILL"); }}>{tr("Print Waybill")}</button>
+                <button style={{ ...secondaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={() => { openPrintLayout("MANIFEST"); logPrint("MANIFEST"); }}>{tr("Print Manifest")}</button>
+                <button style={{ ...secondaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={() => { openPrintLayout("ROUTE_SHEET"); logPrint("ROUTE_SHEET"); }}>{tr("Print Route Sheet")}</button>
               </div>
 
               <div style={{ marginTop: 12, fontSize: 14, fontWeight: 800, color: "#334155" }}>{tr("Print from dispatch batch")}</div>
@@ -716,8 +730,8 @@ export default function WayManagement() {
                 ))}
               </select>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button style={primaryBtn} onClick={() => openPrintBatchLayout("MANIFEST")}>{tr("Print Batch Manifest")}</button>
-                <button style={secondaryBtn} onClick={() => openPrintBatchLayout("ROUTE_SHEET")}>{tr("Print Batch Route Sheet")}</button>
+                <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={() => openPrintBatchLayout("MANIFEST")}>{tr("Print Batch Manifest")}</button>
+                <button style={{ ...secondaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={() => openPrintBatchLayout("ROUTE_SHEET")}>{tr("Print Batch Route Sheet")}</button>
               </div>
             </>
           )}
@@ -733,7 +747,7 @@ export default function WayManagement() {
               </select>
               <input style={inputStyle} placeholder={tr("Scanned by")} value={scannedBy} onChange={(e) => setScannedBy(e.target.value)} />
               <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={scanNote} onChange={(e) => setScanNote(e.target.value)} />
-              <button style={primaryBtn} onClick={runScan}>{tr("Scan Delivery")}</button>
+              <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.scan") ? 1 : 0.55, cursor: access.can("dispatch.batch.scan") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.scan")} onClick={runScan}>{tr("Scan Delivery")}</button>
 
               {scanResult ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -755,7 +769,7 @@ export default function WayManagement() {
               <input style={inputStyle} placeholder={tr("Dispatch Batch ID")} value={dispatchScanCode} onChange={(e) => setDispatchScanCode(e.target.value)} />
               <input style={inputStyle} placeholder={tr("Scanned by")} value={dispatchScannedBy} onChange={(e) => setDispatchScannedBy(e.target.value)} />
               <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={dispatchScanNote} onChange={(e) => setDispatchScanNote(e.target.value)} />
-              <button style={primaryBtn} onClick={runDispatchScan}>{tr("Start Dispatch from Batch Scan")}</button>
+              <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.scan") ? 1 : 0.55, cursor: access.can("dispatch.batch.scan") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.scan")} onClick={runDispatchScan}>{tr("Start Dispatch from Batch Scan")}</button>
 
               {dispatchScanResult ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -787,8 +801,8 @@ export default function WayManagement() {
               <input style={inputStyle} placeholder={tr("COD Collected")} value={closeoutCollected} onChange={(e) => setCloseoutCollected(e.target.value)} />
               <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={closeoutNote} onChange={(e) => setCloseoutNote(e.target.value)} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button style={primaryBtn} onClick={runDispatchCloseout}>{tr("Close Dispatch Batch")}</button>
-              <button style={secondaryBtn} onClick={openDispatchCloseoutPrint}>{tr("Print Closeout Summary")}</button>
+              <button style={{ ...primaryBtn, opacity: access.can("dispatch.batch.closeout") ? 1 : 0.55, cursor: access.can("dispatch.batch.closeout") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.closeout")} onClick={runDispatchCloseout}>{tr("Close Dispatch Batch")}</button>
+              <button style={{ ...secondaryBtn, opacity: access.can("dispatch.batch.print") ? 1 : 0.55, cursor: access.can("dispatch.batch.print") ? "pointer" : "not-allowed" }} disabled={!access.can("dispatch.batch.print")} onClick={openDispatchCloseoutPrint}>{tr("Print Closeout Summary")}</button>
             </div>
 
               {closeoutResult ? (

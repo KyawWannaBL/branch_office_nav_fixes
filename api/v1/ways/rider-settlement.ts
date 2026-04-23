@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { writeAuditLog } from "../../_lib/auditLog";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);
@@ -134,6 +135,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
 
     if (insertRes.error) return send(res, 500, { error: insertRes.error.message });
+
+    await writeAuditLog({
+      req,
+      action: "rider.handover.save",
+      resourceType: "rider_handover_report",
+      resourceId: insertRes.data.report_id,
+      payload: body,
+      afterState: insertRes.data,
+    });
 
     return send(res, 200, { ok: true, data: insertRes.data });
   } catch (error: any) {

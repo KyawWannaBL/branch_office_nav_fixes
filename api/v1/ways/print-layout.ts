@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { writeAuditLog } from "../../_lib/auditLog";
 
 function esc(value: unknown) {
   return String(value ?? "")
@@ -169,6 +170,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }).join("");
 
     const html = htmlPage(title, subtitle, `${head}<tbody>${bodyRows}</tbody>`);
+
+    await writeAuditLog({
+      req,
+      action: "dispatch.batch.print",
+      resourceType: "dispatch_print",
+      resourceId: dispatchBatchId || type,
+      payload: { type, dispatchBatchId, deliveryIds },
+    });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(html);

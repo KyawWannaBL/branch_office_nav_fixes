@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../_lib/serverSupabase";
+import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { writeAuditLog } from "../../_lib/auditLog";
 
 function esc(v: unknown) {
   const s = String(v ?? "");
@@ -60,6 +61,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           x.returned_at, x.returned_by, x.closeout_note
         ])
       );
+
+      await writeAuditLog({
+        req,
+        action: "finance.export.pack",
+        resourceType: "finance_export",
+        resourceId: "dispatch_closeout",
+        payload: { pack, dateFrom, dateTo, rider },
+      });
+
+      await writeAuditLog({
+        req,
+        action: "finance.export.pack",
+        resourceType: "finance_export",
+        resourceId: "rider_handover",
+        payload: { pack, dateFrom, dateTo, rider },
+      });
+
+      await writeAuditLog({
+        req,
+        action: "finance.export.pack",
+        resourceType: "finance_export",
+        resourceId: "delivery_closeout_detail",
+        payload: { pack, dateFrom, dateTo, rider },
+      });
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="dispatch_closeout_pack.csv"');

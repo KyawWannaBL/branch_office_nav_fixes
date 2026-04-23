@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { translateMessage } from "@/lib/translateMessage";
+import { actorRequestHeaders, appendActorQuery } from "@/lib/actorIdentity";
+import { useRoleAccess } from "@/hooks/useRoleAccess";
 
 const card: React.CSSProperties = {
   border: "1px solid #dbe4ee",
@@ -31,6 +33,7 @@ function safe(v: any, fb = "-") {
 
 export default function RiderSettlementReport() {
   const { lang, t: tr } = useT();
+  const access = useRoleAccess();
 
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
@@ -67,7 +70,10 @@ export default function RiderSettlementReport() {
       setMessage("No saved handover report yet.");
       return;
     }
-    window.open(`/api/v1/ways/rider-handover-print?report_id=${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+    const qs = new URLSearchParams();
+    qs.set("report_id", id);
+    appendActorQuery(qs);
+    window.open(`/api/v1/ways/rider-handover-print?${qs.toString()}`, "_blank", "noopener,noreferrer");
   }
 
   async function saveReport() {
@@ -77,7 +83,7 @@ export default function RiderSettlementReport() {
       const reportDate = dateTo || new Date().toISOString().slice(0, 10);
       const res = await fetch("/api/v1/ways/rider-settlement", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...actorRequestHeaders() },
         body: JSON.stringify({
           report_date: reportDate,
           rider_name: selected.rider_name,
@@ -196,8 +202,8 @@ export default function RiderSettlementReport() {
               />
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button style={primaryBtn} onClick={saveReport}>{tr("Save Handover Report")}</button>
-                <button style={secondaryBtn} onClick={() => openPrintReport()}>{tr("Print Handover Report")}</button>
+                <button style={{ ...primaryBtn, opacity: access.can("rider.handover.save") ? 1 : 0.55, cursor: access.can("rider.handover.save") ? "pointer" : "not-allowed" }} disabled={!access.can("rider.handover.save")} onClick={saveReport}>{tr("Save Handover Report")}</button>
+                <button style={{ ...secondaryBtn, opacity: access.can("rider.handover.print") ? 1 : 0.55, cursor: access.can("rider.handover.print") ? "pointer" : "not-allowed" }} disabled={!access.can("rider.handover.print")} onClick={() => openPrintReport()}>{tr("Print Handover Report")}</button>
               </div>
 
               {savedReportId ? (

@@ -14,6 +14,15 @@ export function canAccessPath(path: string, role?: string | null): boolean {
 
   if (!p) return true;
 
+
+  if (p.startsWith("/audit-logs")) {
+    return isOneOf(r, [
+      "supervisor", "ops_manager", "operations", "operations_command",
+      "finance", "finance_admin", "finance_manager",
+      "admin", "admin_hr"
+    ]);
+  }
+
   if (
     p.startsWith("/operations-command-center") ||
     p.startsWith("/finance-batch-drilldown") ||
