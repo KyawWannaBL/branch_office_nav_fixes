@@ -1,38 +1,30 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-
-type Language = 'en' | 'my';
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { AppLang } from "@/lib/i18n";
 
 type LanguageContextValue = {
-  lang: Language;
-  setLanguage: (lang: Language) => void;
+  lang: AppLang;
+  setLang: (lang: AppLang) => void;
   toggleLang: () => void;
 };
 
-const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
+const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLang] = useState<Language>(() => {
-    const saved = localStorage.getItem('app-language');
-    return saved === 'my' ? 'my' : 'en';
+  const [lang, setLangState] = useState<AppLang>(() => {
+    const saved = localStorage.getItem("app_lang");
+    return saved === "my" ? "my" : "en";
   });
 
   useEffect(() => {
-    localStorage.setItem('app-language', lang);
+    localStorage.setItem("app_lang", lang);
+    document.documentElement.lang = lang === "my" ? "my" : "en";
   }, [lang]);
-
-  const setLanguage = (next: Language) => {
-    setLang(next);
-  };
-
-  const toggleLang = () => {
-    setLang((prev) => (prev === 'en' ? 'my' : 'en'));
-  };
 
   const value = useMemo(
     () => ({
       lang,
-      setLanguage,
-      toggleLang,
+      setLang: (next: AppLang) => setLangState(next),
+      toggleLang: () => setLangState((prev) => (prev === "en" ? "my" : "en")),
     }),
     [lang]
   );
@@ -41,9 +33,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error('useLanguage must be used within LanguageProvider');
-  }
-  return context;
+  const ctx = useContext(LanguageContext);
+  if (!ctx) throw new Error("useLanguage must be used within LanguageProvider");
+  return ctx;
 }

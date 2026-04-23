@@ -22,46 +22,16 @@ export function defaultPortalForRole(role?: string | null): string {
     return "/admin-hr/admin";
   }
 
-  if (
-    [
-      "FINANCE",
-      "FIN",
-      "FINM",
-      "ACCOUNTING",
-      "ACCOUNTANT",
-      "FINANCE_ADMIN",
-      "FINANCE_MANAGER",
-      "FINANCE_ANALYST",
-      "FINANCE_STAFF",
-    ].includes(r)
-  ) {
-    return "/finance";
-  }
-
-  if (
-    [
-      "MARKETING",
-      "MARKETING_ADMIN",
-      "MARKETING_MANAGER",
-      "MARKETING_STAFF",
-      "GROWTH",
-      "BRAND",
-      "DIGITAL_MARKETING",
-    ].includes(r)
-  ) {
-    return "/marketing";
-  }
-
   if (["HR", "HR_ADMIN", "HR_MANAGER"].includes(r)) {
     return "/admin-hr/employees";
   }
 
   if (["SUPERVISOR", "SUP", "OPS_SUPERVISOR"].includes(r)) {
-    return "/supervisor";
+    return "/pickup-control-center";
   }
 
   if (["DATA_ENTRY", "DATAENTRY", "DEO"].includes(r)) {
-    return "/data-entry";
+    return "/data-entry-operations";
   }
 
   if (["CUSTOMER_SERVICE", "CS"].includes(r)) {
@@ -69,7 +39,11 @@ export function defaultPortalForRole(role?: string | null): string {
   }
 
   if (["CUSTOMER", "CUSTOMER_PORTAL"].includes(r)) {
-    return "/customer";
+    return "/create-delivery?source=CUS";
+  }
+
+  if (["OS", "ONLINE_STORE", "ONLINESTORE"].includes(r)) {
+    return "/create-delivery?source=OS";
   }
 
   if (
@@ -81,12 +55,10 @@ export function defaultPortalForRole(role?: string | null): string {
       "MERCHANT_STAFF",
     ].includes(r)
   ) {
-    return "/merchant";
+    return "/create-delivery?source=MER";
   }
 
-  if (
-    ["WAREHOUSE", "WH", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF"].includes(r)
-  ) {
+  if (["WAREHOUSE", "WH", "WAREHOUSE_MANAGER", "WAREHOUSE_STAFF"].includes(r)) {
     return "/warehouse";
   }
 

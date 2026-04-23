@@ -1,315 +1,878 @@
 // @ts-nocheck
-
-
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
-import {
-  Search,
-  RefreshCw,
-  Route,
-  AlertTriangle,
-  RotateCcw,
-  ShieldAlert,
-  FileScan,
-  Eye,
-  CheckCircle2,
-  Truck,
-  Clock3,
-  XCircle,
-  Loader2,
-  PackageCheck,
-  MapPin,
-  Phone,
-  MessageSquare,
-  X,
-} from "lucide-react";
+import { useT } from "@/hooks/useT";
+import { statusText } from "@/lib/statusText";
+import { translateMessage } from "@/lib/translateMessage";
 
-type RawShipment = Record<string, unknown>;
-type TimelineEvent = {
-  id?: string;
-  event_code?: string;
-  to_status?: string;
-  internal_status?: string;
-  public_status?: string;
-  event_at?: string;
-  notes?: string | null;
-  branch_id?: string | null;
-  rider_user_id?: string | null;
+const card: React.CSSProperties = {
+  border: "1px solid #dbe4ee",
+  borderRadius: 22,
+  background: "#fff",
+  padding: 18,
+  boxShadow: "0 10px 24px rgba(15,23,42,.04)",
 };
 
-type PodRecord = {
-  id?: string;
-  pod_type?: string | null;
-  recipient_name?: string | null;
-  recipient_relationship?: string | null;
-  photo_url?: string | null;
-  signature_image_url?: string | null;
-  otp_verified?: boolean;
-  collected_at?: string | null;
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  padding: "11px 12px",
+  fontSize: 14,
+  fontFamily: "inherit",
 };
 
-type WayRow = {
-  id: string;
-  trackingNo: string;
-  customerName: string;
-  phone: string;
-  status: string;
-  collectable: number;
-  riderRemark: string;
-  lastLocation: string;
-  createdAt: string;
-};
-
-type ModalType = "status" | "reassign" | "hold" | "return" | "escalate" | null;
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-function toText(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "-";
+function safe(v: any, fb = "-") {
+  return v === null || v === undefined || v === "" ? fb : String(v);
 }
 
-function toNumber(...values: unknown[]): number {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
+function money(v: any) {
+  const n = Number(v ?? 0);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
+}
+
+export default function WayManagement() {
+  const { lang, t: tr } = useT();
+
+  const [tab, setTab] = useState<"queue" | "bulk" | "rider" | "route" | "dispatch" | "print" | "scan" | "dispatchscan" | "closeout" | "history">("queue");
+  const [rows, setRows] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedWay, setSelectedWay] = useState<any>(null);
+  const [historyRows, setHistoryRows] = useState<any[]>([]);
+  const [routeGroups, setRouteGroups] = useState<any[]>([]);
+  const [dispatchBatches, setDispatchBatches] = useState<any[]>([]);
+  const [selectedPrintBatchId, setSelectedPrintBatchId] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [bulkStatus, setBulkStatus] = useState("OUT_FOR_DELIVERY");
+  const [bulkNote, setBulkNote] = useState("");
+
+  const [riderName, setRiderName] = useState("");
+  const [riderPhone, setRiderPhone] = useState("");
+  const [riderNote, setRiderNote] = useState("");
+
+  const [printedBy, setPrintedBy] = useState("");
+  const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dispatchHub, setDispatchHub] = useState("YGN");
+  const [dispatchTownship, setDispatchTownship] = useState("");
+  const [dispatchZone, setDispatchZone] = useState("");
+  const [dispatchVehicle, setDispatchVehicle] = useState("");
+  const [dispatchNote, setDispatchNote] = useState("");
+
+  const [scanCode, setScanCode] = useState("");
+  const [scanType, setScanType] = useState("VERIFY");
+  const [scannedBy, setScannedBy] = useState("");
+  const [scanNote, setScanNote] = useState("");
+  const [scanResult, setScanResult] = useState<any>(null);
+  const [dispatchScanCode, setDispatchScanCode] = useState("");
+  const [dispatchScannedBy, setDispatchScannedBy] = useState("");
+  const [dispatchScanNote, setDispatchScanNote] = useState("");
+  const [dispatchScanResult, setDispatchScanResult] = useState<any>(null);
+  const [closeoutBatchId, setCloseoutBatchId] = useState("");
+  const [closeoutReturnedBy, setCloseoutReturnedBy] = useState("");
+  const [closeoutCollected, setCloseoutCollected] = useState("");
+  const [closeoutNote, setCloseoutNote] = useState("");
+  const [closeoutResult, setCloseoutResult] = useState<any>(null);
+  const [sequenceTownship, setSequenceTownship] = useState("");
+  const [sequenceRows, setSequenceRows] = useState<any[]>([]);
+
+  const statusOptions = [
+    "",
+    "DRAFT",
+    "SAVED",
+    "SUBMITTED",
+    "IN_TRANSIT",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "FAILED_ATTEMPT",
+    "RETURNED",
+    "CANCELLED",
+  ];
+
+  const scanTypeOptions = [
+    "VERIFY",
+    "STAGING_IN",
+    "OUTBOUND_SCAN",
+    "OUT_FOR_DELIVERY",
+  ];
+
+  async function loadWays() {
+    const qs = new URLSearchParams();
+    if (search) qs.set("q", search);
+    if (statusFilter) qs.set("status", statusFilter);
+
+    const res = await fetch(`/api/v1/ways/list?${qs.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    const list = Array.isArray(data?.data) ? data.data : [];
+    setRows(list);
+    if (list.length && !selectedWay) setSelectedWay(list[0]);
+  }
+
+  async function loadHistory(deliveryId: string) {
+    const res = await fetch(`/api/v1/ways/history?delivery_id=${encodeURIComponent(deliveryId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    setHistoryRows(Array.isArray(data?.data) ? data.data : []);
+  }
+
+
+  async function loadDispatchBatches() {
+    const res = await fetch("/api/v1/ways/dispatch-batches");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    setDispatchBatches(Array.isArray(data?.data) ? data.data : []);
+  }
+
+  async function createDispatchBatch() {
+    setMessage("");
+    try {
+      const res = await fetch("/api/v1/ways/dispatch-batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_ids: selectedIds,
+          dispatch_date: dispatchDate,
+          hub_code: dispatchHub,
+          township: dispatchTownship,
+          zone_code: dispatchZone,
+          rider_name: riderName,
+          rider_phone: riderPhone,
+          vehicle_no: dispatchVehicle,
+          note: dispatchNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.data.dispatch_batch_id}`);
+      await loadWays();
+      await loadDispatchBatches();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
     }
   }
-  return 0;
-}
 
-function formatMMK(value: number): string {
-  return `${new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0)} MMK`;
-}
 
-function formatDate(value?: string | null): string {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return new Intl.DateTimeFormat("en-GB", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
+  async function loadSequencePlan(townshipValue?: string) {
+    const qs = new URLSearchParams();
+    const val = townshipValue ?? sequenceTownship;
+    if (val) qs.set("township", val);
 
-function prettifyStatus(status: string) {
-  return status.replace(/_/g, " ").toUpperCase();
-}
-
-function getStatusBadge(status: string) {
-  const s = status.toLowerCase();
-  if (["delivered", "success", "completed"].includes(s)) return "bg-emerald-100 text-emerald-700";
-  if (["failed", "delivery_failed", "cancelled"].includes(s)) return "bg-rose-100 text-rose-700";
-  if (["returned", "return_initiated"].includes(s)) return "bg-amber-100 text-amber-700";
-  if (["on_hold", "hold"].includes(s)) return "bg-violet-100 text-violet-700";
-  return "bg-sky-100 text-sky-700";
-}
-
-function normalizeShipments(input: unknown): WayRow[] {
-  const source = Array.isArray(input)
-    ? input
-    : input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).items)
-    ? ((input as Record<string, unknown>).items as RawShipment[])
-    : input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).shipments)
-    ? ((input as Record<string, unknown>).shipments as RawShipment[])
-    : [];
-
-  return source.map((item, index) => ({
-    id: toText(item.id, `row-${index}`),
-    trackingNo: toText(item.tracking_no, item.trackingNo, item.waybill_no, item.waybillNo, item.code),
-    customerName: toText(item.customer_name, item.customerName, item.recipient_name, item.recipientName, item.sender_name, item.senderName),
-    phone: toText(item.phone, item.recipient_phone, item.customer_phone, item.sender_phone),
-    status: toText(item.current_status, item.status, item.delivery_status, "processing").toLowerCase(),
-    collectable: toNumber(item.total_collectable, item.totalCollectable, item.cod_amount, item.codAmount, item.total_charge, item.totalCharge, item.delivery_fee, item.deliveryFee),
-    riderRemark: toText(item.rider_remark, item.riderRemark, item.comments, item.remark, "No comments"),
-    lastLocation: toText(item.last_location, item.lastLocation, item.address, item.current_branch, "Processing"),
-    createdAt: toText(item.created_at, item.createdAt, "-"),
-  }));
-}
-
-export default function WayManagementPage() {
-  const [rows, setRows] = useState<WayRow[]>([]);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [selected, setSelected] = useState<WayRow | null>(null);
-  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
-  const [pod, setPod] = useState<PodRecord | null>(null);
-  const [listLoading, setListLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [modalType, setModalType] = useState<ModalType>(null);
-  const [modalPayload, setModalPayload] = useState({
-    to_status: "out_for_delivery",
-    event_code: "STATUS_UPDATED",
-    reason_code: "",
-    notes: "",
-    to_branch_id: "",
-    priority: "high",
-  });
-
-  useEffect(() => { fetchShipments(); }, []);
-  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 3000); return () => clearTimeout(timer); }, [toast]);
-
-  async function buildHeaders(json = true) {
-    const headers = new Headers();
-    headers.set("Accept", "application/json");
-    headers.set("X-Request-Id", typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`);
-    if (json) headers.set("Content-Type", "application/json");
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
-    return headers;
+    const res = await fetch(`/api/v1/ways/sequence?${qs.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    setSequenceRows(Array.isArray(data?.data) ? data.data : []);
   }
 
-  async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${API_BASE}${path}`, { ...init, cache: "no-store" });
-    if (!response.ok) {
-      let message = `Request failed (${response.status})`;
-      try { const problem = await response.json(); message = problem?.detail || problem?.title || message; } catch {}
-      throw new Error(message);
+  async function saveSequencePlan() {
+    setMessage("");
+    try {
+      const payload = sequenceRows.map((row: any, idx: number) => ({
+        delivery_id: row.delivery_id,
+        route_sequence: Number(row.route_sequence || row.suggested_sequence || idx + 1),
+      }));
+
+      const res = await fetch("/api/v1/ways/sequence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.updated} ways updated`);
+      await loadWays();
+      await loadRoutePlan();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
     }
-    return response.status === 204 ? {} as T : response.json() as Promise<T>;
   }
 
-  async function fetchShipments() {
-    setListLoading(true); setError(null);
+
+  async function loadSequencePlan(townshipValue?: string) {
+    const qs = new URLSearchParams();
+    const val = townshipValue ?? sequenceTownship;
+    if (val) qs.set("township", val);
+
+    const res = await fetch(`/api/v1/ways/sequence?${qs.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    setSequenceRows(Array.isArray(data?.data) ? data.data : []);
+  }
+
+  async function saveSequencePlan() {
+    setMessage("");
     try {
-      const headers = await buildHeaders(false);
-      const params = new URLSearchParams();
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (query.trim()) params.set("tracking_no", query.trim());
-      const data = await apiRequest<unknown>(`/api/v1/shipments${params.toString() ? `?${params}` : ""}`, { method: "GET", headers });
-      setRows(normalizeShipments(data));
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to load shipments"); setRows([]); } finally { setListLoading(false); }
+      const payload = sequenceRows.map((row: any, idx: number) => ({
+        delivery_id: row.delivery_id,
+        route_sequence: Number(row.route_sequence || row.suggested_sequence || idx + 1),
+      }));
+
+      const res = await fetch("/api/v1/ways/sequence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.updated} ways updated`);
+      await loadWays();
+      await loadRoutePlan();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
   }
 
-  async function openDetails(row: WayRow) {
-    setSelected(row); setDetailLoading(true); setTimeline([]); setPod(null);
+  async function loadRoutePlan() {
+    const qs = new URLSearchParams();
+    if (search) qs.set("q", search);
+    if (statusFilter) qs.set("status", statusFilter);
+
+    const res = await fetch(`/api/v1/ways/route-plan?${qs.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Failed to load");
+    setRouteGroups(Array.isArray(data?.data) ? data.data : []);
+  }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        await loadWays();
+      } catch (error: any) {
+        if (!active) return;
+        setMessage(error?.message || "Failed to load");
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const filteredRows = useMemo(() => rows, [rows]);
+
+  function toggleId(id: string) {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
+  async function runBulkStatus() {
+    setMessage("");
     try {
-      const headers = await buildHeaders(false);
-      const [timelineRes, podRes] = await Promise.allSettled([
-        apiRequest<{ items?: TimelineEvent[] } | TimelineEvent[]>(`/api/v1/shipments/${row.id}/timeline`, { method: "GET", headers }),
-        apiRequest<PodRecord>(`/api/v1/shipments/${row.id}/pod`, { method: "GET", headers }),
-      ]);
-      if (timelineRes.status === "fulfilled") { const data = timelineRes.value; setTimeline(Array.isArray(data) ? data : data.items || []); }
-      if (podRes.status === "fulfilled") setPod(podRes.value);
-    } catch (err) { setToast(err instanceof Error ? err.message : "Failed to load timeline"); } finally { setDetailLoading(false); }
+      const res = await fetch("/api/v1/ways/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delivery_ids: selectedIds, to_status: bulkStatus, note: bulkNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.updated} ways updated`);
+      await loadWays();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
   }
 
-  async function submitAction() {
-    if (!selected || !modalType) return;
-    setActionLoading(true); setError(null);
+  async function runAssignRider() {
+    setMessage("");
     try {
-      const headers = await buildHeaders(true);
-      let endpoint = `/api/v1/shipments/${selected.id}/status`;
-      let body = {};
-      if (modalType === "status") body = { event_code: modalPayload.event_code, to_status: modalPayload.to_status, notes: modalPayload.notes };
-      if (modalType === "reassign") { endpoint = `/api/v1/shipments/${selected.id}/reassign-route`; body = { to_branch_id: modalPayload.to_branch_id, notes: modalPayload.notes }; }
-      if (modalType === "hold") { endpoint = `/api/v1/shipments/${selected.id}/hold`; body = { reason_code: modalPayload.reason_code || "MANUAL_HOLD", notes: modalPayload.notes }; }
-      if (modalType === "return") { endpoint = `/api/v1/shipments/${selected.id}/return`; body = { reason_code: modalPayload.reason_code || "RETURN_TO_SENDER", notes: modalPayload.notes }; }
-      if (modalType === "escalate") { endpoint = `/api/v1/support/tickets`; body = { shipment_id: selected.id, category: "way_management", priority: modalPayload.priority, subject: `Escalation ${selected.trackingNo}`, description: modalPayload.notes }; }
-
-      await apiRequest(endpoint, { method: "POST", headers, body: JSON.stringify(body) });
-      setToast("Action completed / လုပ်ဆောင်ချက်ပြီးပါပြီ");
-      setModalType(null);
-      await fetchShipments();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to submit action"); } finally { setActionLoading(false); }
+      const res = await fetch("/api/v1/ways/assign-rider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_ids: selectedIds,
+          rider_name: riderName,
+          rider_phone: riderPhone,
+          note: riderNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.updated} ways updated`);
+      await loadWays();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
   }
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      const q = query.trim().toLowerCase();
-      const matchesQuery = !q || row.trackingNo.toLowerCase().includes(q) || row.customerName.toLowerCase().includes(q) || row.phone.includes(q);
-      const matchesStatus = statusFilter === "all" ? true : row.status === statusFilter;
-      return matchesQuery && matchesStatus;
-    });
-  }, [rows, query, statusFilter]);
+
+
+  function openPrintBatchLayout(type: string) {
+    if (!selectedPrintBatchId) {
+      setMessage("No dispatch batch selected.");
+      return;
+    }
+    const url = `/api/v1/ways/print-layout?type=${encodeURIComponent(type)}&dispatch_batch_id=${encodeURIComponent(selectedPrintBatchId)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function openPrintLayout(type: string) {
+    const ids = selectedIds.join(",");
+    if (!ids) {
+      setMessage("No records found for this queue.");
+      return;
+    }
+    const url = `/api/v1/ways/print-layout?type=${encodeURIComponent(type)}&delivery_ids=${encodeURIComponent(ids)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function logPrint(printType: string) {
+    setMessage("");
+    try {
+      const res = await fetch("/api/v1/ways/manifest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_ids: selectedIds,
+          print_type: printType,
+          printed_by: printedBy,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setMessage(`Action completed: ${data.logged} print logs saved`);
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
+  }
+
+
+
+
+  function openDispatchCloseoutPrint() {
+    const id = closeoutResult?.dispatch_batch_id || closeoutBatchId;
+    if (!id) {
+      setMessage("No dispatch batch selected.");
+      return;
+    }
+    window.open(`/api/v1/ways/dispatch-closeout-print?dispatch_batch_id=${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function runDispatchCloseout() {
+    setMessage("");
+    try {
+      const res = await fetch("/api/v1/ways/dispatch-closeout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dispatch_batch_id: closeoutBatchId,
+          returned_by: closeoutReturnedBy,
+          cod_collected: closeoutCollected,
+          note: closeoutNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setCloseoutResult(data.data);
+      setMessage(`Action completed: ${data.data.dispatch_batch_id}`);
+      await loadDispatchBatches();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
+  }
+
+  async function runDispatchScan() {
+    setMessage("");
+    try {
+      const res = await fetch("/api/v1/ways/dispatch-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dispatch_batch_id: dispatchScanCode,
+          scanned_by: dispatchScannedBy,
+          note: dispatchScanNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setDispatchScanResult(data.data);
+      setMessage(`Action completed: ${data.data.dispatch_batch_id}`);
+      await loadWays();
+      await loadDispatchBatches();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
+  }
+
+  async function runScan() {
+    setMessage("");
+    try {
+      const res = await fetch("/api/v1/ways/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scan_code: scanCode,
+          scan_type: scanType,
+          scanned_by: scannedBy,
+          note: scanNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load");
+      setScanResult(data.data);
+      setSelectedWay(data.data);
+      setMessage(`Scanned ${data.data.delivery_id}`);
+      await loadHistory(data.data.delivery_id).catch(() => setHistoryRows([]));
+      await loadWays();
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load");
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-[#f7f9fc] p-8">
-      {/* UI Headers */}
-      <div className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Britium Express Delivery</p>
-        <h1 className="text-4xl font-black uppercase tracking-tight text-[#0d2c54]">Way Management <span className="font-normal">/ ကုန်စည်စီမံခန့်ခွဲမှု</span></h1>
-      </div>
-
-      {/* Metrics Section */}
-      <div className="mt-8 grid gap-4 lg:grid-cols-4">
-        <MetricCard icon={<Truck size={28} />} badge="ACTIVE" title="Total Ways / စုစုပေါင်း" value={filteredRows.length} dark />
-        <MetricCard icon={<CheckCircle2 className="text-emerald-500" size={28} />} badge="SUCCESS" title="Delivered / ပို့ပြီး" value={filteredRows.filter(r => r.status === 'delivered').length} />
-        <MetricCard icon={<XCircle className="text-rose-500" size={28} />} badge="FAILURE" title="Failed / မအောင်မြင်မှု" value={filteredRows.filter(r => r.status.includes('failed')).length} />
-        <MetricCard icon={<RotateCcw className="text-amber-500" size={28} />} badge="RETURN" title="Returns / ပြန်ပို့မှု" value={filteredRows.filter(r => r.status.includes('return')).length} />
-      </div>
-
-      {/* Control Bar */}
-      <div className="mt-8 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr_0.5fr]">
-          <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tracking... | ကုန်စည်နံပါတ်ဖြင့်ရှာရန်" className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm font-medium outline-none focus:border-[#0d2c54]" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <section style={{ ...card, display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start" }}>
+        <div>
+          <div style={{ display: "inline-flex", padding: "8px 12px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em" }}>
+            {tr("Way Management")}
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none">
-            <option value="all">All Statuses / အခြေအနေအားလုံး</option>
-            <option value="pending_pickup">Pending Pickup</option>
-            <option value="out_for_delivery">Out for Delivery</option>
-            <option value="delivered">Delivered</option>
-          </select>
-          <button onClick={fetchShipments} className="flex items-center justify-center gap-2 rounded-2xl bg-[#0d2c54] px-4 py-3 text-sm font-black text-white">
-            {listLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh
-          </button>
+          <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
+            {tr("Way Management Operations Portal")}
+          </h1>
+          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
+            {tr("Control way queue, bulk status updates, rider assignments, and audit trail from one operations workspace.")}
+          </p>
         </div>
+      </section>
 
-        {/* Data Table */}
-        <div className="mt-8 overflow-x-auto rounded-[28px] border border-slate-200">
-          <table className="min-w-full border-separate border-spacing-0 text-sm">
-            <thead className="bg-slate-50">
-              <tr className="text-left text-slate-500 font-black uppercase tracking-wider">
-                <th className="px-4 py-4">Tracking</th>
-                <th className="px-4 py-4">Customer</th>
-                <th className="px-4 py-4">Status</th>
-                <th className="px-4 py-4">Collectable</th>
-                <th className="px-4 py-4">Location</th>
-                <th className="px-4 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white">
-              {filteredRows.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-4 font-black text-[#0d2c54] border-b border-slate-100">{row.trackingNo}</td>
-                  <td className="px-4 py-4 border-b border-slate-100"><div>{row.customerName}</div><div className="text-xs text-slate-400">{row.phone}</div></td>
-                  <td className="px-4 py-4 border-b border-slate-100"><span className={`rounded-full px-3 py-1 text-[10px] font-black ${getStatusBadge(row.status)}`}>{row.status.toUpperCase()}</span></td>
-                  <td className="px-4 py-4 font-black text-emerald-600 border-b border-slate-100">{formatMMK(row.collectable)}</td>
-                  <td className="px-4 py-4 text-slate-600 border-b border-slate-100">{row.lastLocation}</td>
-                  <td className="px-4 py-4 border-b border-slate-100">
-                    <button onClick={() => openDetails(row)} className="text-[#0d2c54] hover:underline font-bold">Details</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {message ? (
+        <div style={{ border: "1px solid #a5f3fc", background: "#ecfeff", color: "#0f766e", padding: "12px 14px", borderRadius: 16, fontSize: 13, fontWeight: 700 }}>
+          {translateMessage(lang, message)}
         </div>
+      ) : null}
+
+      <section style={{ ...card, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {[
+          ["queue", "Queue"],
+          ["bulk", "Bulk Actions"],
+          ["rider", "Rider Assignment"],
+          ["route", "Route Planning"],
+          ["dispatch", "Dispatch Batches"],
+          ["print", "Print Center"],
+          ["scan", "Scan Screen"],
+          ["dispatchscan", "Dispatch Scan"],
+          ["closeout", "Batch Closeout"],
+          ["history", "Audit Trail"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key as any)}
+            style={{
+              border: "none",
+              borderRadius: 14,
+              padding: "12px 16px",
+              fontWeight: 800,
+              cursor: "pointer",
+              background: tab === key ? "#0f2f5c" : "#f8fafc",
+              color: tab === key ? "#fff" : "#475569",
+            }}
+          >
+            {tr(label)}
+          </button>
+        ))}
+      </section>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(380px,1fr) minmax(0,1.15fr)", gap: 18 }}>
+        <section style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Way Queue")}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input style={{ ...inputStyle, width: 220 }} placeholder={tr("Search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <select style={{ ...inputStyle, width: 180 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                {statusOptions.map((s) => (
+                  <option key={s || "ALL"} value={s}>{s ? statusText(lang, s) : tr("All Statuses")}</option>
+                ))}
+              </select>
+              <button style={secondaryBtn} onClick={loadWays}>{tr("Apply")}</button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 760, overflow: "auto" }}>
+            {filteredRows.map((row: any) => {
+              const checked = selectedIds.includes(row.delivery_id);
+              const active = selectedWay?.delivery_id === row.delivery_id;
+              return (
+                <div
+                  key={row.delivery_id}
+                  style={{
+                    border: active ? "1px solid #93c5fd" : "1px solid #dbe4ee",
+                    borderRadius: 18,
+                    background: active ? "#eff6ff" : "#fff",
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleId(row.delivery_id)} style={{ marginTop: 4 }} />
+                    <button
+                      onClick={() => {
+                        setSelectedWay(row);
+                        loadHistory(row.delivery_id).catch(() => setHistoryRows([]));
+                      }}
+                      style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", flex: 1 }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <strong style={{ color: "#0f172a" }}>{safe(row.delivery_id)}</strong>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>
+                          {statusText(lang, row.delivery_status)}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 6, color: "#334155" }}>{safe(row.receiver_name)}</div>
+                      <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>
+                        {safe(row.pickup_id)} · {safe(row.receiver_township || row.township)} · {tr("Rider")}: {safe(row.rider_name)}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {!filteredRows.length && (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {tr("No records found for this queue.")}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section style={{ ...card, display: "flex", flexDirection: "column", gap: 16 }}>
+          {tab === "queue" && selectedWay && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Queue Overview")}</div>
+              <Metric label={tr("Delivery ID")} value={safe(selectedWay.delivery_id)} strong />
+              <Metric label={tr("Pickup ID")} value={safe(selectedWay.pickup_id)} />
+              <Metric label={tr("Status")} value={statusText(lang, selectedWay.delivery_status)} />
+              <Metric label={tr("Receiver Name")} value={safe(selectedWay.receiver_name)} />
+              <Metric label={tr("Receiver Phone")} value={safe(selectedWay.receiver_phone)} />
+              <Metric label={tr("Township")} value={safe(selectedWay.receiver_township || selectedWay.township)} />
+              <Metric label={tr("Rider")} value={safe(selectedWay.rider_name)} />
+              <Metric label={tr("COD")} value={money(selectedWay.waybill_total_cod || selectedWay.receivable || 0)} />
+            </>
+          )}
+
+          {tab === "bulk" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Bulk Actions")}</div>
+              <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>{tr("Selected deliveries")}: {selectedIds.length}</div>
+              <select style={inputStyle} value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
+                {statusOptions.filter(Boolean).map((s) => (
+                  <option key={s} value={s}>{statusText(lang, s)}</option>
+                ))}
+              </select>
+              <textarea style={{ ...inputStyle, minHeight: 100 }} placeholder={tr("Notes / Remarks")} value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} />
+              <button style={primaryBtn} onClick={runBulkStatus}>{tr("Apply")}</button>
+            </>
+          )}
+
+          {tab === "rider" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Rider Assignment")}</div>
+              <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>{tr("Selected deliveries")}: {selectedIds.length}</div>
+              <input style={inputStyle} placeholder={tr("Rider Name")} value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+              <input style={inputStyle} placeholder={tr("Rider Phone")} value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 100 }} placeholder={tr("Notes / Remarks")} value={riderNote} onChange={(e) => setRiderNote(e.target.value)} />
+              <button style={primaryBtn} onClick={runAssignRider}>{tr("Assign Rider")}</button>
+            </>
+          )}
+
+          {tab === "route" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Route Planning")}</div>
+                <button style={secondaryBtn} onClick={loadRoutePlan}>{tr("Refresh")}</button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr", gap: 14 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 560, overflow: "auto" }}>
+                  {routeGroups.map((g: any) => (
+                    <button
+                      key={g.township}
+                      onClick={() => {
+                        setSequenceTownship(g.township);
+                        loadSequencePlan(g.township).catch(() => setSequenceRows([]));
+                      }}
+                      style={{ border: "1px solid #dbe4ee", borderRadius: 16, padding: 12, background: "#f8fafc", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <strong>{safe(g.township)}</strong>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{g.total_ways} way(s)</span>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: "#334155" }}>
+                        {tr("COD")}: {money(g.total_cod)} · {tr("Weight")}: {money(g.total_weight)}
+                      </div>
+                    </button>
+                  ))}
+                  {!routeGroups.length && (
+                    <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                      {tr("No records found for this queue.")}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>
+                    {tr("Route Sequence")} {sequenceTownship ? `· ${sequenceTownship}` : ""}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 560, overflow: "auto" }}>
+                    {sequenceRows.map((row: any, idx: number) => (
+                      <div key={row.delivery_id} style={{ border: "1px solid #dbe4ee", borderRadius: 14, padding: 10, background: "#fff" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 10, alignItems: "center" }}>
+                          <input
+                            style={inputStyle}
+                            type="number"
+                            min="1"
+                            value={row.route_sequence || row.suggested_sequence || idx + 1}
+                            onChange={(e) => {
+                              const val = Number(e.target.value || 0);
+                              setSequenceRows((prev) =>
+                                prev.map((x: any) =>
+                                  x.delivery_id === row.delivery_id ? { ...x, route_sequence: val } : x
+                                )
+                              );
+                            }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 800, color: "#0f172a" }}>{safe(row.delivery_id)}</div>
+                            <div style={{ marginTop: 4, fontSize: 13, color: "#334155" }}>{safe(row.receiver_name)}</div>
+                            <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+                              {safe(row.receiver_township || row.township)} · {safe(row.receiver_address || row.delivery_address)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {!sequenceRows.length && (
+                      <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                        {tr("Select a township group to generate route sequence.")}
+                      </div>
+                    )}
+                  </div>
+
+                  <button style={primaryBtn} onClick={saveSequencePlan}>{tr("Save Route Sequence")}</button>
+                </div>
+              </div>
+            </>
+          )}
+
+
+          {tab === "dispatch" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Dispatch Batches")}</div>
+              <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>{tr("Selected deliveries")}: {selectedIds.length}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <input style={inputStyle} type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)} />
+                <input style={inputStyle} placeholder={tr("Hub")} value={dispatchHub} onChange={(e) => setDispatchHub(e.target.value)} />
+                <input style={inputStyle} placeholder={tr("Township")} value={dispatchTownship} onChange={(e) => setDispatchTownship(e.target.value)} />
+                <input style={inputStyle} placeholder={tr("Zone / Route")} value={dispatchZone} onChange={(e) => setDispatchZone(e.target.value)} />
+                <input style={inputStyle} placeholder={tr("Vehicle No")} value={dispatchVehicle} onChange={(e) => setDispatchVehicle(e.target.value)} />
+                <input style={inputStyle} placeholder={tr("Rider Name")} value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+              </div>
+              <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={dispatchNote} onChange={(e) => setDispatchNote(e.target.value)} />
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button style={primaryBtn} onClick={createDispatchBatch}>{tr("Create Dispatch Batch")}</button>
+                <button style={secondaryBtn} onClick={loadDispatchBatches}>{tr("Refresh")}</button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflow: "auto" }}>
+                {dispatchBatches.map((b: any) => (
+                  <div key={b.dispatch_batch_id} style={{ border: "1px solid #dbe4ee", borderRadius: 16, padding: 12, background: "#f8fafc" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>{safe(b.dispatch_batch_id)}</strong>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>{statusText(lang, b.status)}</span>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 13, color: "#334155" }}>
+                      {safe(b.dispatch_date)} · {safe(b.hub_code)} · {safe(b.township)}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                      {tr("Rider")}: {safe(b.rider_name)} · {b.total_ways} way(s)
+                    </div>
+                  </div>
+                ))}
+                {!dispatchBatches.length && (
+                  <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                    {tr("No records found for this queue.")}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+
+          {tab === "print" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Print Center")}</div>
+              <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>{tr("Selected deliveries")}: {selectedIds.length}</div>
+              <input style={inputStyle} placeholder={tr("Printed by")} value={printedBy} onChange={(e) => setPrintedBy(e.target.value)} />
+
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#334155" }}>{tr("Print from selected way IDs")}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button style={primaryBtn} onClick={() => { openPrintLayout("MANIFEST"); logPrint("WAYBILL"); }}>{tr("Print Waybill")}</button>
+                <button style={secondaryBtn} onClick={() => { openPrintLayout("MANIFEST"); logPrint("MANIFEST"); }}>{tr("Print Manifest")}</button>
+                <button style={secondaryBtn} onClick={() => { openPrintLayout("ROUTE_SHEET"); logPrint("ROUTE_SHEET"); }}>{tr("Print Route Sheet")}</button>
+              </div>
+
+              <div style={{ marginTop: 12, fontSize: 14, fontWeight: 800, color: "#334155" }}>{tr("Print from dispatch batch")}</div>
+              <select style={inputStyle} value={selectedPrintBatchId} onChange={(e) => setSelectedPrintBatchId(e.target.value)}>
+                <option value="">{tr("Select dispatch batch")}</option>
+                {dispatchBatches.map((b: any) => (
+                  <option key={b.dispatch_batch_id} value={b.dispatch_batch_id}>
+                    {b.dispatch_batch_id} · {b.dispatch_date} · {b.township || "-"}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button style={primaryBtn} onClick={() => openPrintBatchLayout("MANIFEST")}>{tr("Print Batch Manifest")}</button>
+                <button style={secondaryBtn} onClick={() => openPrintBatchLayout("ROUTE_SHEET")}>{tr("Print Batch Route Sheet")}</button>
+              </div>
+            </>
+          )}
+
+          {tab === "scan" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Scan Screen")}</div>
+              <input style={inputStyle} placeholder={tr("Scan / enter Delivery ID or QR value")} value={scanCode} onChange={(e) => setScanCode(e.target.value)} />
+              <select style={inputStyle} value={scanType} onChange={(e) => setScanType(e.target.value)}>
+                {scanTypeOptions.map((s) => (
+                  <option key={s} value={s}>{tr(s)}</option>
+                ))}
+              </select>
+              <input style={inputStyle} placeholder={tr("Scanned by")} value={scannedBy} onChange={(e) => setScannedBy(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={scanNote} onChange={(e) => setScanNote(e.target.value)} />
+              <button style={primaryBtn} onClick={runScan}>{tr("Scan Delivery")}</button>
+
+              {scanResult ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Metric label={tr("Delivery ID")} value={safe(scanResult.delivery_id)} strong />
+                  <Metric label={tr("Pickup ID")} value={safe(scanResult.pickup_id)} />
+                  <Metric label={tr("Status")} value={statusText(lang, scanResult.delivery_status)} />
+                  <Metric label={tr("Rider")} value={safe(scanResult.rider_name)} />
+                </div>
+              ) : (
+                <div style={{ color: "#64748b" }}>{tr("No scan result yet.")}</div>
+              )}
+            </>
+          )}
+
+
+          {tab === "dispatchscan" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Dispatch Scan")}</div>
+              <input style={inputStyle} placeholder={tr("Dispatch Batch ID")} value={dispatchScanCode} onChange={(e) => setDispatchScanCode(e.target.value)} />
+              <input style={inputStyle} placeholder={tr("Scanned by")} value={dispatchScannedBy} onChange={(e) => setDispatchScannedBy(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={dispatchScanNote} onChange={(e) => setDispatchScanNote(e.target.value)} />
+              <button style={primaryBtn} onClick={runDispatchScan}>{tr("Start Dispatch from Batch Scan")}</button>
+
+              {dispatchScanResult ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Metric label={tr("Dispatch Batch ID")} value={safe(dispatchScanResult.dispatch_batch_id)} strong />
+                  <Metric label={tr("Status")} value={statusText(lang, dispatchScanResult.status)} />
+                  <Metric label={tr("Selected deliveries")} value={safe(dispatchScanResult.total_ways)} />
+                  <Metric label={tr("Scanned by")} value={safe(dispatchScanResult.dispatched_by)} />
+                </div>
+              ) : (
+                <div style={{ color: "#64748b" }}>{tr("No dispatch scan result yet.")}</div>
+              )}
+            </>
+          )}
+
+
+
+          {tab === "closeout" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Batch Closeout")}</div>
+              <select style={inputStyle} value={closeoutBatchId} onChange={(e) => setCloseoutBatchId(e.target.value)}>
+                <option value="">{tr("Select dispatch batch")}</option>
+                {dispatchBatches.map((b: any) => (
+                  <option key={b.dispatch_batch_id} value={b.dispatch_batch_id}>
+                    {b.dispatch_batch_id} · {b.dispatch_date} · {b.township || "-"}
+                  </option>
+                ))}
+              </select>
+              <input style={inputStyle} placeholder={tr("Returned by")} value={closeoutReturnedBy} onChange={(e) => setCloseoutReturnedBy(e.target.value)} />
+              <input style={inputStyle} placeholder={tr("COD Collected")} value={closeoutCollected} onChange={(e) => setCloseoutCollected(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 90 }} placeholder={tr("Notes / Remarks")} value={closeoutNote} onChange={(e) => setCloseoutNote(e.target.value)} />
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button style={primaryBtn} onClick={runDispatchCloseout}>{tr("Close Dispatch Batch")}</button>
+              <button style={secondaryBtn} onClick={openDispatchCloseoutPrint}>{tr("Print Closeout Summary")}</button>
+            </div>
+
+              {closeoutResult ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Metric label={tr("Dispatch Batch ID")} value={safe(closeoutResult.dispatch_batch_id)} strong />
+                  <Metric label={tr("Status")} value={statusText(lang, closeoutResult.status)} />
+                  <Metric label={tr("Delivered")} value={safe(closeoutResult.delivered_count)} />
+                  <Metric label={tr("Failed Attempts")} value={safe(closeoutResult.failed_count)} />
+                  <Metric label={tr("Returned")} value={safe(closeoutResult.returned_count)} />
+                  <Metric label={tr("COD Expected")} value={money(closeoutResult.cod_expected)} />
+                  <Metric label={tr("COD Collected")} value={money(closeoutResult.cod_collected)} />
+                  <Metric label={tr("Shortage")} value={money(closeoutResult.shortage_amount)} />
+                </div>
+              ) : (
+                <div style={{ color: "#64748b" }}>{tr("No closeout result yet.")}</div>
+              )}
+            </>
+          )}
+
+
+          {tab === "history" && (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{tr("Audit Trail")}</div>
+              {!selectedWay ? (
+                <div style={{ color: "#64748b" }}>{tr("Select a way from the queue to view its history.")}</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 560, overflow: "auto" }}>
+                  {historyRows.map((row: any) => (
+                    <div key={row.id} style={{ border: "1px solid #dbe4ee", borderRadius: 16, padding: 12, background: "#f8fafc" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <strong>{safe(row.action)}</strong>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{safe(row.created_at)}</span>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: "#334155" }}>
+                        {statusText(lang, row.from_status)} → {statusText(lang, row.to_status)}
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                        {tr("Rider")}: {safe(row.rider_name)} {safe(row.rider_phone, "")}
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                        {safe(row.note)}
+                      </div>
+                    </div>
+                  ))}
+                  {!historyRows.length && (
+                    <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                      {tr("No audit logs.")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
-// Sub-components
-function MetricCard({ icon, badge, title, value, dark = false }: any) {
+function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className={`rounded-[28px] p-6 shadow-sm ${dark ? "bg-[#192b4d] text-white" : "bg-white"}`}>
-      <div className="mb-6 flex items-center justify-between">{icon} <span className="bg-slate-100 text-slate-700 rounded-full px-3 py-1 text-[10px] font-black uppercase">{badge}</span></div>
-      <p className="text-xs font-black uppercase tracking-[0.2em] opacity-60">{title}</p>
-      <p className="mt-4 text-5xl font-black">{value}</p>
+    <div style={{ ...card, padding: 14, background: strong ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)" : "#fff" }}>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>{label}</div>
+      <div style={{ marginTop: 10, fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{value}</div>
     </div>
   );
 }
+
+const primaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f766e",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f2f5c",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};

@@ -44,11 +44,21 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { normalizeRole } from "@/lib/portalRegistry";
+import { useT } from "@/hooks/useT";
+import { canAccessPath } from "@/lib/roleAccess";
 
 type NavItem = {
   title: string;
   path: string;
   icon: LucideIcon;
+};
+
+type SidebarProps = {
+  className?: string;
+  isExpanded: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  onFocusCapture?: () => void;
 };
 
 const coreNav: NavItem[] = [
@@ -80,6 +90,16 @@ const portalNav: NavItem[] = [
   { title: "Deliverymen", path: "/deliverymen", icon: Truck },
   { title: "Financial Center", path: "/finance", icon: DollarSign },
   { title: "Marketing Portal", path: "/marketing", icon: Megaphone },
+  { title: "Pickup & Delivery Overview", path: "/pickup-delivery-overview", icon: Package },
+  { title: "Pickup Control Center", path: "/pickup-control-center", icon: ClipboardCheck },
+  { title: "Data Entry Operations", path: "/data-entry-operations", icon: Database },
+  { title: "Tariff Master", path: "/master/tariffs", icon: Database },
+  { title: "Delivery Workflow", path: "/delivery-workflow", icon: Database },
+  { title: "Delivery Exceptions", path: "/delivery-exceptions", icon: Database },
+  { title: "COD Settlements", path: "/cod-settlements", icon: Database },
+  { title: "Finance Reconciliation", path: "/finance-reconciliation", icon: Database },
+  { title: "Executive Operations", path: "/executive-operations", icon: Database },
+  { title: "Rider Settlement", path: "/rider-settlement-report", icon: Database },
 ];
 
 const systemNav: NavItem[] = [
@@ -116,41 +136,64 @@ function displayName(user: any, profileName?: string | null) {
   );
 }
 
+function initialsFromName(name: string) {
+  const words = name
+    .split(" ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!words.length) return "BU";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
+}
+
 function NavSection({
   title,
   items,
   pathname,
+  isExpanded,
 }: {
   title: string;
   items: NavItem[];
   pathname: string;
+  isExpanded: boolean;
 }) {
   return (
     <div className="mt-5">
-      <div className="px-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
-        {title}
-      </div>
+      {isExpanded ? (
+        <div className="px-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">
+          {title}
+        </div>
+      ) : null}
 
-      <SidebarMenu className="mt-2">
+      <SidebarMenu className={cn(isExpanded ? "mt-2" : "mt-1")}>
         {items.map((item) => {
           const Icon = item.icon;
-          const isActive =
-            pathname === item.path || pathname.startsWith(`${item.path}/`);
+          const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
 
           return (
             <SidebarMenuItem key={item.path}>
               <SidebarMenuButton
                 asChild
                 isActive={isActive}
+                tooltip={tr(item.title)}
                 className={cn(
-                  "h-11 rounded-xl font-semibold text-slate-800",
+                  "h-11 rounded-xl font-semibold text-slate-800 transition-all",
                   "hover:bg-sky-50 hover:text-sky-900",
-                  "data-[active=true]:bg-sky-600 data-[active=true]:text-white"
+                  "data-[active=true]:bg-sky-600 data-[active=true]:text-white",
+                  isExpanded ? "px-3" : "justify-center px-2"
                 )}
               >
-                <Link to={item.path} className="flex items-center gap-3">
+                <Link
+                  to={item.path}
+                  title={tr(item.title)}
+                  className={cn(
+                    "flex w-full items-center",
+                    isExpanded ? "gap-3" : "justify-center"
+                  )}
+                >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{item.title}</span>
+                  {isExpanded ? <span className="truncate">{tr(item.title)}</span> : null}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -161,7 +204,15 @@ function NavSection({
   );
 }
 
-export function Sidebar({ className }: { className?: string }) {
+export function Sidebar({
+  className,
+  isExpanded,
+  onMouseEnter,
+  onMouseLeave,
+  onFocusCapture,
+}: SidebarProps) {
+  const { t: tr } = useT();
+  const visibleItems = navigationItems.filter((item) => canAccessPath(item.path));
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -176,8 +227,7 @@ export function Sidebar({ className }: { className?: string }) {
 
     async function resolveIdentity() {
       const metaRole = pickRoleFromMetadata(user);
-      const metaName =
-        user?.user_metadata?.full_name || user?.user_metadata?.name || null;
+      const metaName = user?.user_metadata?.full_name || user?.user_metadata?.name || null;
 
       if (metaRole) {
         if (!active) return;
@@ -202,8 +252,7 @@ export function Sidebar({ className }: { className?: string }) {
 
         if (!active) return;
 
-        const profileRole =
-          data?.role_code || data?.app_role || data?.user_role || data?.role;
+        const profileRole = data?.role_code || data?.app_role || data?.user_role || data?.role;
 
         setResolvedRole(mapDisplayRole(profileRole));
         setResolvedName(data?.full_name || metaName);
@@ -226,50 +275,83 @@ export function Sidebar({ className }: { className?: string }) {
     navigate("/login", { replace: true });
   }
 
-  const shownName = useMemo(
-    () => displayName(user, resolvedName),
-    [user, resolvedName]
-  );
+  const shownName = useMemo(() => displayName(user, resolvedName), [user, resolvedName]);
+  const initials = useMemo(() => initialsFromName(shownName), [shownName]);
 
   return (
-    <UISidebar className={className} variant="inset" collapsible="offcanvas">
+    <UISidebar
+      className={cn("border-r border-slate-200 bg-white", className)}
+      variant="inset"
+      collapsible="icon"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocusCapture={onFocusCapture}
+    >
       <SidebarHeader className="border-b border-slate-200 bg-white/90 p-3">
-        <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] px-4 py-4 shadow-sm">
-          <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-700">
-            Enterprise Suite
+        {isExpanded ? (
+          <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] px-4 py-4 shadow-sm">
+            <div className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-700">
+              Enterprise Suite
+            </div>
+            <div className="mt-1 text-2xl font-black text-slate-900">
+              Britium Operations
+            </div>
           </div>
-          <div className="mt-1 text-2xl font-black text-slate-900">
-            Britium Operations
+        ) : (
+          <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] py-4 shadow-sm">
+            <div className="text-sm font-black tracking-[0.2em] text-cyan-700">BE</div>
           </div>
-        </div>
+        )}
       </SidebarHeader>
 
-      <SidebarContent className="overflow-y-auto bg-white px-3 py-3">
-        <NavSection title="Core" items={coreNav} pathname={location.pathname} />
-        <NavSection title="Portals" items={portalNav} pathname={location.pathname} />
-        <NavSection title="System" items={systemNav} pathname={location.pathname} />
+      <SidebarContent className="overflow-y-auto bg-white px-2 py-3">
+        <NavSection title="Core" items={coreNav} pathname={location.pathname} isExpanded={isExpanded} />
+        <NavSection title="Portals" items={portalNav} pathname={location.pathname} isExpanded={isExpanded} />
+        <NavSection title="System" items={systemNav} pathname={location.pathname} isExpanded={isExpanded} />
       </SidebarContent>
 
       <SidebarSeparator />
 
       <SidebarFooter className="bg-white p-3">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-          <div>Signed in as</div>
-          <div className="mt-1 truncate font-bold text-slate-900">{shownName}</div>
-          <div className="mt-1 truncate text-[11px] text-slate-500">{user?.email || "-"}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
-            Role: {resolvedRole}
-          </div>
-        </div>
+        {isExpanded ? (
+          <>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              <div>Signed in as</div>
+              <div className="mt-1 truncate font-bold text-slate-900">{shownName}</div>
+              <div className="mt-1 truncate text-[11px] text-slate-500">{user?.email || "-"}</div>
+              <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">
+                Role: {resolvedRole}
+              </div>
+            </div>
 
-        <button
-          type="button"
-          onClick={() => void handleSignOut()}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </button>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-3">
+            <div
+              title={shownName}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-black text-slate-700"
+            >
+              {initials}
+            </div>
+
+            <button
+              type="button"
+              title="Sign Out"
+              onClick={() => void handleSignOut()}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 transition hover:bg-slate-50"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </SidebarFooter>
 
       <SidebarRail />
