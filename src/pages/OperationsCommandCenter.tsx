@@ -32,6 +32,87 @@ function normalizeError(error: any, fallback: string) {
   return message;
 }
 
+function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div
+      style={{
+        ...card,
+        padding: 14,
+        background: strong
+          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
+          : "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={card}>
+      <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", marginBottom: 14 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
+    </section>
+  );
+}
+
+function RowCard({ title, line1, line2 }: { title: string; line1: string; line2: string }) {
+  return (
+    <div style={{ border: "1px solid #dbe4ee", borderRadius: 14, padding: 12, background: "#f8fafc" }}>
+      <div style={{ fontWeight: 800, color: "#0f172a" }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 13, color: "#334155" }}>{line1}</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>{line2}</div>
+    </div>
+  );
+}
+
+function Empty({ label }: { label: string }) {
+  return <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>{label}</div>;
+}
+
+function QuickLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        textDecoration: "none",
+        borderRadius: 12,
+        background: "#0f766e",
+        color: "#fff",
+        padding: "12px 16px",
+        fontWeight: 800,
+      }}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function ActionLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        textDecoration: "none",
+        border: "1px solid #dbe4ee",
+        borderRadius: 14,
+        padding: 12,
+        color: "#0f172a",
+        fontWeight: 700,
+        background: "#fff",
+      }}
+    >
+      {label}
+    </Link>
+  );
+}
+
 export default function OperationsCommandCenter() {
   const { lang, t: tr } = useT();
   const [payload, setPayload] = useState<any>(null);
@@ -209,86 +290,5 @@ export default function OperationsCommandCenter() {
         </section>
       </div>
     </div>
-  );
-}
-
-function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div
-      style={{
-        ...card,
-        padding: 14,
-        background: strong
-          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
-          : "#fff",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 10, fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section style={card}>
-      <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", marginBottom: 14 }}>{title}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
-    </section>
-  );
-}
-
-function RowCard({ title, line1, line2 }: { title: string; line1: string; line2: string }) {
-  return (
-    <div style={{ border: "1px solid #dbe4ee", borderRadius: 14, padding: 12, background: "#f8fafc" }}>
-      <div style={{ fontWeight: 800, color: "#0f172a" }}>{title}</div>
-      <div style={{ marginTop: 6, fontSize: 13, color: "#334155" }}>{line1}</div>
-      <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>{line2}</div>
-    </div>
-  );
-}
-
-function Empty({ label }: { label: string }) {
-  return <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>{label}</div>;
-}
-
-function QuickLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        textDecoration: "none",
-        borderRadius: 12,
-        background: "#0f766e",
-        color: "#fff",
-        padding: "12px 16px",
-        fontWeight: 800,
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function ActionLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        textDecoration: "none",
-        border: "1px solid #dbe4ee",
-        borderRadius: 14,
-        padding: 12,
-        color: "#0f172a",
-        fontWeight: 700,
-        background: "#fff",
-      }}
-    >
-      {label}
-    </Link>
   );
 }

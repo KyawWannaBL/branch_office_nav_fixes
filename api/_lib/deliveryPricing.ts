@@ -1,103 +1,145 @@
 import { supabaseAdmin } from "./serverSupabase";
 
+export type PaymentStatus = "PAID" | "UNPAID";
+
 export type DeliveryPricingInput = {
   township?: string | null;
-  serviceType: string;
-  weightKg: number;
-  itemPrice: number;
-  itemPaymentStatus: "PAID" | "UNPAID";
-  merchantCustomerDeliveryCharge: number;
-  deliveryPaymentStatus: "PAID" | "UNPAID";
+  serviceType?: string | null;
+  weightKg?: number | null;
+  itemPrice?: number | null;
+  itemPaymentStatus?: PaymentStatus | null;
+  merchantCustomerDeliveryCharge?: number | null;
+  deliveryPaymentStatus?: PaymentStatus | null;
 };
 
-export type DeliveryPricingOutput = {
+export type DeliveryPricingResult = {
   baseWeightKg: number;
   baseDeliveryFee: number;
-  overweightPerKg: number;
   overweightKg: number;
+  overweightPerKg: number;
   overweightSurcharge: number;
   osDeliveryCharge: number;
+  merchantInputCharge: number;
   printedWaybillDeliveryCharge: number;
   osTotalCod: number;
   waybillTotalCod: number;
   receivable: number;
+  pricingSource: string;
 };
 
-function num(value: unknown) {
-  const n = Number(value ?? 0);
+function num(v: unknown) {
+  const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function loadTariff(serviceType: string, township?: string | null) {
-  if (township) {
-    const exact = await supabaseAdmin
-      .from("tariff_rate_cards")
-      .select("*")
-      .eq("active", true)
-      .eq("service_type", serviceType)
-      .eq("township", township)
-      .maybeSingle();
+function cleanTownship(value: unknown) {
+  return String(value || "").trim();
+}
 
-    if (exact.data) return exact.data;
-  }
+async function getTariff(township: string) {
+  if (!township) return null;
 
-  const fallback = await supabaseAdmin
-    .from("tariff_rate_cards")
-    .select("*")
-    .eq("active", true)
-    .eq("service_type", serviceType)
-    .is("township", null)
+  const exact = await supabaseAdmin
+    .from("tariffs")
+    .select("township_name, base_price, weight_surcharge_per_kg")
+    .eq("township_name", township)
     .maybeSingle();
 
-  if (fallback.error) {
-    throw new Error(fallback.error.message);
-  }
+  if (!exact.error && exact.data) return exact.data;
 
-  if (!fallback.data) {
-    throw new Error(`No tariff found for service_type=${serviceType}`);
-  }
+  const rows = await supabaseAdmin
+    .from("tariffs")
+    .select("township_name, base_price, weight_surcharge_per_kg")
+    .ilike("township_name", township);
 
-  return fallback.data;
+  if (rows.error || !rows.data?.length) return null;
+  return rows.data[0];
 }
 
 export async function calculateDeliveryPricing(
   input: DeliveryPricingInput
-): Promise<DeliveryPricingOutput> {
-  const tariff = await loadTariff(input.serviceType || "standard", input.township);
+): Promise<DeliveryPricingResult> {
+  const township = cleanTownship(input.township);
+  const weightKg = Math.max(0, num(input.weightKg));
+  const itemPrice = Math.max(0, num(input.itemPrice));
+  const merchantInputCharge = Math.max(0, num(input.merchantCustomerDeliveryCharge));
+  const itemPaymentStatus: PaymentStatus =
+    input.itemPaymentStatus === "PAID" ? "PAID" : "UNPAID";
+  const deliveryPaymentStatus: PaymentStatus =
+    input.deliveryPaymentStatus === "PAID" ? "PAID" : "UNPAID";
 
-  const baseWeightKg = num(tariff.base_weight_kg);
-  const baseDeliveryFee = num(tariff.base_delivery_fee);
-  const overweightPerKg = num(tariff.overweight_per_kg);
-  const weightKg = num(input.weightKg);
+  const defaultBaseWeightKg = 3;
+  const defaultBaseDeliveryFee = 4000;
+  const defaultOverweightPerKg = 500;
 
-  const overweightKg = Math.max(0, weightKg - baseWeightKg);
-  const overweightSurcharge = overweightKg * overweightPerKg;
-  const osDeliveryCharge = baseDeliveryFee + overweightSurcharge;
+  try {
+    const tariff = await getTariff(township);
 
-  const printedWaybillDeliveryCharge = Math.max(
-    osDeliveryCharge,
-    num(input.merchantCustomerDeliveryCharge)
-  );
+    const baseDeliveryFee = Math.max(
+      0,
+      num(tariff?.base_price ?? defaultBaseDeliveryFee)
+    );
+    const overweightPerKg = Math.max(
+      0,
+      num(tariff?.weight_surcharge_per_kg ?? defaultOverweightPerKg)
+    );
 
-  const itemCollectable = input.itemPaymentStatus === "UNPAID" ? num(input.itemPrice) : 0;
-  const osDeliveryCollectable = input.deliveryPaymentStatus === "UNPAID" ? osDeliveryCharge : 0;
-  const waybillDeliveryCollectable =
-    input.deliveryPaymentStatus === "UNPAID" ? printedWaybillDeliveryCharge : 0;
+    const overweightKg = Math.max(0, weightKg - defaultBaseWeightKg);
+    const overweightSurcharge = overweightKg * overweightPerKg;
+    const osDeliveryCharge = baseDeliveryFee + overweightSurcharge;
 
-  const osTotalCod = itemCollectable + osDeliveryCollectable;
-  const waybillTotalCod = itemCollectable + waybillDeliveryCollectable;
-  const receivable = osTotalCod;
+    const printedWaybillDeliveryCharge = Math.max(
+      osDeliveryCharge,
+      merchantInputCharge
+    );
 
-  return {
-    baseWeightKg,
-    baseDeliveryFee,
-    overweightPerKg,
-    overweightKg,
-    overweightSurcharge,
-    osDeliveryCharge,
-    printedWaybillDeliveryCharge,
-    osTotalCod,
-    waybillTotalCod,
-    receivable,
-  };
+    const itemCollectable = itemPaymentStatus === "UNPAID" ? itemPrice : 0;
+    const osDeliveryCollectable =
+      deliveryPaymentStatus === "UNPAID" ? osDeliveryCharge : 0;
+    const waybillDeliveryCollectable =
+      deliveryPaymentStatus === "UNPAID" ? printedWaybillDeliveryCharge : 0;
+
+    return {
+      baseWeightKg: defaultBaseWeightKg,
+      baseDeliveryFee,
+      overweightKg,
+      overweightPerKg,
+      overweightSurcharge,
+      osDeliveryCharge,
+      merchantInputCharge,
+      printedWaybillDeliveryCharge,
+      osTotalCod: itemCollectable + osDeliveryCollectable,
+      waybillTotalCod: itemCollectable + waybillDeliveryCollectable,
+      receivable: itemCollectable + osDeliveryCollectable,
+      pricingSource: tariff ? "tariff_master" : "default_fallback",
+    };
+  } catch {
+    const overweightKg = Math.max(0, weightKg - defaultBaseWeightKg);
+    const overweightSurcharge = overweightKg * defaultOverweightPerKg;
+    const osDeliveryCharge = defaultBaseDeliveryFee + overweightSurcharge;
+    const printedWaybillDeliveryCharge = Math.max(
+      osDeliveryCharge,
+      merchantInputCharge
+    );
+    const itemCollectable = itemPaymentStatus === "UNPAID" ? itemPrice : 0;
+    const osDeliveryCollectable =
+      deliveryPaymentStatus === "UNPAID" ? osDeliveryCharge : 0;
+    const waybillDeliveryCollectable =
+      deliveryPaymentStatus === "UNPAID" ? printedWaybillDeliveryCharge : 0;
+
+    return {
+      baseWeightKg: defaultBaseWeightKg,
+      baseDeliveryFee: defaultBaseDeliveryFee,
+      overweightKg,
+      overweightPerKg: defaultOverweightPerKg,
+      overweightSurcharge,
+      osDeliveryCharge,
+      merchantInputCharge,
+      printedWaybillDeliveryCharge,
+      osTotalCod: itemCollectable + osDeliveryCollectable,
+      waybillTotalCod: itemCollectable + waybillDeliveryCollectable,
+      receivable: itemCollectable + osDeliveryCollectable,
+      pricingSource: "default_fallback",
+    };
+  }
 }

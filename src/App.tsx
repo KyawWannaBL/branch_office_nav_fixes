@@ -38,12 +38,10 @@ function PortalRoutes() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/home" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/Login" element={<Navigate to="/dashboard" replace />} />
           <Route path="/reset-password" element={<Navigate to="/dashboard" replace />} />
           <Route path="/unauthorized" element={<Navigate to="/dashboard" replace />} />
 
           <Route path="/dashboard" element={<Dashboard />} />
-
           <Route path="/create-delivery" element={<CreateDelivery />} />
           <Route path="/pickup-registration" element={<CreateDelivery />} />
           <Route path="/delivery-registration" element={<CreateDelivery />} />

@@ -127,6 +127,52 @@ async function fetchAuditPayload(qs: URLSearchParams) {
   throw lastError || new Error("Failed to load audit logs");
 }
 
+function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div
+      style={{
+        ...card,
+        padding: 14,
+        background: strong
+          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
+          : "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function JsonPanel({ title, value }: { title: string; value: string }) {
+  return (
+    <div style={{ border: "1px solid #dbe4ee", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
+      <div style={{ padding: "12px 14px", fontWeight: 800, borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+        {title}
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: 14,
+          maxHeight: 220,
+          overflow: "auto",
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: "#334155",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {value || "-"}
+      </pre>
+    </div>
+  );
+}
+
 export default function AuditLogViewer() {
   const { lang, t: tr } = useT();
 
@@ -462,52 +508,6 @@ export default function AuditLogViewer() {
           )}
         </section>
       </div>
-    </div>
-  );
-}
-
-function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div
-      style={{
-        ...card,
-        padding: 14,
-        background: strong
-          ? "linear-gradient(135deg,#ecfeff 0%,#f0fdf4 100%)"
-          : "#fff",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function JsonPanel({ title, value }: { title: string; value: string }) {
-  return (
-    <div style={{ border: "1px solid #dbe4ee", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-      <div style={{ padding: "12px 14px", fontWeight: 800, borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
-        {title}
-      </div>
-      <pre
-        style={{
-          margin: 0,
-          padding: 14,
-          maxHeight: 220,
-          overflow: "auto",
-          fontSize: 12,
-          lineHeight: 1.55,
-          color: "#334155",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {value || "-"}
-      </pre>
     </div>
   );
 }

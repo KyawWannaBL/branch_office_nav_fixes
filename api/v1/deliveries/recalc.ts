@@ -37,6 +37,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return send(res, 200, { ok: true, data });
   } catch (error: any) {
-    return send(res, 500, { error: error?.message || "Failed to recalculate delivery" });
+    return send(res, 500, {
+      error: error?.message || "Failed to recalculate delivery",
+    });
   }
 }
