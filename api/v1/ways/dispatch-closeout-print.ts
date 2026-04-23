@@ -2,6 +2,17 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
 import { writeAuditLog } from "../../_lib/auditLog";
 
+function send(res: VercelResponse, status: number, payload: unknown) {
+  return res.status(status).json(payload);
+}
+
+function wantsHtml(req: VercelRequest) {
+  const format = String(req.query.format || "").toLowerCase();
+  const accept = String(req.headers.accept || "").toLowerCase();
+  const dest = String(req.headers["sec-fetch-dest"] || "").toLowerCase();
+  return format === "html" || dest === "document" || accept.includes("text/html");
+}
+
 function esc(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -42,90 +53,33 @@ function page(batch: any) {
   }
   .title { margin-top: 12px; font-size: 26px; font-weight: 800; }
   .sub { margin-top: 6px; font-size: 12px; color: #475569; }
-  .meta {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin: 16px 0;
-  }
-  .card {
-    border: 1px solid #dbe4ee;
-    border-radius: 12px;
-    padding: 10px;
-    background: #fff;
-  }
-  .label {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #64748b;
-  }
-  .value {
-    margin-top: 8px;
-    font-size: 18px;
-    font-weight: 800;
-    color: #0f172a;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-top: 12px;
-  }
-  .section-title {
-    margin: 18px 0 10px;
-    font-size: 16px;
-    font-weight: 800;
-  }
-  .notes {
-    min-height: 88px;
-    border: 1px solid #dbe4ee;
-    border-radius: 12px;
-    padding: 10px;
-    white-space: pre-wrap;
-  }
-  .signatures {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 18px;
-    margin-top: 28px;
-  }
-  .sig-box {
-    padding-top: 42px;
-    border-top: 1px solid #94a3b8;
-    font-size: 12px;
-    color: #334155;
-  }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+  .card { border: 1px solid #dbe4ee; border-radius: 12px; padding: 10px; background: #fff; }
+  .label { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+  .value { margin-top: 8px; font-size: 18px; font-weight: 800; color: #0f172a; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+  .section-title { margin: 18px 0 10px; font-size: 16px; font-weight: 800; }
+  .notes { min-height: 88px; border: 1px solid #dbe4ee; border-radius: 12px; padding: 10px; white-space: pre-wrap; }
+  .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 28px; }
+  .sig-box { padding-top: 42px; border-top: 1px solid #94a3b8; font-size: 12px; color: #334155; }
   .printbar { margin-bottom: 16px; }
-  .printbtn {
-    border: none;
-    background: #0f766e;
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-weight: 700;
-    cursor: pointer;
-  }
+  .printbtn { border: none; background: #0f766e; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
   @media print { .printbar { display: none; } }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="printbar"><button class="printbtn" onclick="window.print()">Print</button></div>
-
     <div class="header">
       <div class="eyebrow">Britium Express</div>
       <div class="title">Dispatch Closeout Summary</div>
       <div class="sub">Closed dispatch batch summary for operations and finance sign-off.</div>
     </div>
-
     <div class="meta">
       <div class="card"><div class="label">Dispatch Batch ID</div><div class="value">${esc(batch.dispatch_batch_id)}</div></div>
       <div class="card"><div class="label">Dispatch Date</div><div class="value">${esc(batch.dispatch_date)}</div></div>
       <div class="card"><div class="label">Status</div><div class="value">${esc(batch.status)}</div></div>
     </div>
-
     <div class="grid">
       <div class="card"><div class="label">Hub</div><div class="value">${esc(batch.hub_code || "-")}</div></div>
       <div class="card"><div class="label">Township</div><div class="value">${esc(batch.township || "-")}</div></div>
@@ -144,10 +98,8 @@ function page(batch: any) {
       <div class="card"><div class="label">Returned At</div><div class="value">${esc(batch.returned_at || "-")}</div></div>
       <div class="card"><div class="label">Returned By</div><div class="value">${esc(batch.returned_by || "-")}</div></div>
     </div>
-
     <div class="section-title">Closeout Note</div>
     <div class="notes">${esc(batch.closeout_note || "-")}</div>
-
     <div class="signatures">
       <div class="sig-box">Operations Prepared By</div>
       <div class="sig-box">Rider Returned By</div>
@@ -161,12 +113,12 @@ function page(batch: any) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "GET") {
-      return res.status(405).send("Method not allowed");
+      return send(res, 405, { error: "Method not allowed" });
     }
 
     const dispatchBatchId = String(req.query.dispatch_batch_id || "").trim();
     if (!dispatchBatchId) {
-      return res.status(400).send("dispatch_batch_id is required");
+      return send(res, 400, { error: "dispatch_batch_id is required" });
     }
 
     const result = await supabaseAdmin
@@ -175,8 +127,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq("dispatch_batch_id", dispatchBatchId)
       .maybeSingle();
 
-    if (result.error) return res.status(500).send(result.error.message);
-    if (!result.data) return res.status(404).send("Dispatch batch not found");
+    if (result.error) return send(res, 500, { error: result.error.message });
+    if (!result.data) return send(res, 404, { error: "Dispatch batch not found" });
 
     await writeAuditLog({
       req,
@@ -186,9 +138,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       afterState: result.data,
     });
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(page(result.data));
+    const printUrl = `/api/v1/ways/dispatch-closeout-print?dispatch_batch_id=${encodeURIComponent(dispatchBatchId)}&format=html`;
+
+    if (wantsHtml(req)) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(page(result.data));
+    }
+
+    return send(res, 200, {
+      ok: true,
+      data: result.data,
+      print_url: printUrl,
+    });
   } catch (error: any) {
-    return res.status(500).send(error?.message || "Dispatch closeout print API failed");
+    return send(res, 500, { error: error?.message || "Dispatch closeout print API failed" });
   }
 }

@@ -9,7 +9,11 @@ function send(res: VercelResponse, status: number, payload: unknown) {
 function parseBody(req: VercelRequest) {
   if (!req.body) return {};
   if (typeof req.body === "string") {
-    try { return JSON.parse(req.body); } catch { return {}; }
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
   }
   return req.body;
 }
@@ -42,7 +46,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (result.error) return send(res, 500, { error: result.error.message });
 
       let rows = result.data || [];
-
       if (dateFrom) rows = rows.filter((x: any) => String(x.dispatch_date || "") >= dateFrom);
       if (dateTo) rows = rows.filter((x: any) => String(x.dispatch_date || "") <= dateTo);
       if (rider) rows = rows.filter((x: any) => String(x.rider_name || "").toLowerCase().includes(rider));
@@ -82,7 +85,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return send(res, 200, { ok: true, data: Array.from(map.values()) });
     }
 
-    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    if (req.method !== "POST") {
+      return send(res, 405, { error: "Method not allowed" });
+    }
 
     const body = parseBody(req);
     const reportDate = String(body.report_date || "").trim();

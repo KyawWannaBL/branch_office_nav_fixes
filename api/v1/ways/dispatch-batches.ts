@@ -37,7 +37,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return send(res, 200, { ok: true, data: result.data || [] });
     }
 
-    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    if (req.method !== "POST") {
+      return send(res, 405, { error: "Method not allowed" });
+    }
 
     const body = parseBody(req);
     const deliveryIds = Array.isArray(body.delivery_ids) ? body.delivery_ids.filter(Boolean) : [];
@@ -91,7 +93,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (fetchRes.error) return send(res, 500, { error: fetchRes.error.message });
 
-    for (const row of fetchRes.data || []) {
+    const ways = fetchRes.data || [];
+    if (!ways.length) return send(res, 404, { error: "No delivery orders found for provided delivery_ids" });
+
+    for (const row of ways) {
       const itemRes = await supabaseAdmin
         .from("dispatch_batch_items")
         .insert({
@@ -117,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (updateRes.error) return send(res, 500, { error: updateRes.error.message });
 
-      await supabaseAdmin.from("way_status_logs").insert({
+      const logRes = await supabaseAdmin.from("way_status_logs").insert({
         delivery_id: row.delivery_id,
         pickup_id: row.pickup_id || null,
         action: "dispatch_batch_create",
@@ -133,6 +138,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           vehicle_no: vehicleNo,
         },
       });
+
+      if (logRes.error) return send(res, 500, { error: logRes.error.message });
     }
 
     await writeAuditLog({

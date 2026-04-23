@@ -2,6 +2,17 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
 import { writeAuditLog } from "../../_lib/auditLog";
 
+function send(res: VercelResponse, status: number, payload: unknown) {
+  return res.status(status).json(payload);
+}
+
+function wantsHtml(req: VercelRequest) {
+  const format = String(req.query.format || "").toLowerCase();
+  const accept = String(req.headers.accept || "").toLowerCase();
+  const dest = String(req.headers["sec-fetch-dest"] || "").toLowerCase();
+  return format === "html" || dest === "document" || accept.includes("text/html");
+}
+
 function esc(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -42,90 +53,33 @@ function page(report: any) {
   }
   .title { margin-top: 12px; font-size: 26px; font-weight: 800; }
   .sub { margin-top: 6px; font-size: 12px; color: #475569; }
-  .meta {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin: 16px 0;
-  }
-  .meta-card, .metric {
-    border: 1px solid #dbe4ee;
-    border-radius: 12px;
-    padding: 10px;
-    background: #fff;
-  }
-  .label {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #64748b;
-  }
-  .value {
-    margin-top: 8px;
-    font-size: 18px;
-    font-weight: 800;
-    color: #0f172a;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-top: 12px;
-  }
-  .section-title {
-    margin: 18px 0 10px;
-    font-size: 16px;
-    font-weight: 800;
-  }
-  .notes {
-    min-height: 88px;
-    border: 1px solid #dbe4ee;
-    border-radius: 12px;
-    padding: 10px;
-    white-space: pre-wrap;
-  }
-  .signatures {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 18px;
-    margin-top: 28px;
-  }
-  .sig-box {
-    padding-top: 42px;
-    border-top: 1px solid #94a3b8;
-    font-size: 12px;
-    color: #334155;
-  }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+  .meta-card, .metric { border: 1px solid #dbe4ee; border-radius: 12px; padding: 10px; background: #fff; }
+  .label { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #64748b; }
+  .value { margin-top: 8px; font-size: 18px; font-weight: 800; color: #0f172a; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+  .section-title { margin: 18px 0 10px; font-size: 16px; font-weight: 800; }
+  .notes { min-height: 88px; border: 1px solid #dbe4ee; border-radius: 12px; padding: 10px; white-space: pre-wrap; }
+  .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 28px; }
+  .sig-box { padding-top: 42px; border-top: 1px solid #94a3b8; font-size: 12px; color: #334155; }
   .printbar { margin-bottom: 16px; }
-  .printbtn {
-    border: none;
-    background: #0f766e;
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-weight: 700;
-    cursor: pointer;
-  }
+  .printbtn { border: none; background: #0f766e; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
   @media print { .printbar { display: none; } }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="printbar"><button class="printbtn" onclick="window.print()">Print</button></div>
-
     <div class="header">
       <div class="eyebrow">Britium Express</div>
       <div class="title">Rider Handover Report</div>
       <div class="sub">Saved finance handover report for rider settlement and reconciliation.</div>
     </div>
-
     <div class="meta">
       <div class="meta-card"><div class="label">Report ID</div><div class="value">${esc(report.report_id)}</div></div>
       <div class="meta-card"><div class="label">Report Date</div><div class="value">${esc(report.report_date)}</div></div>
       <div class="meta-card"><div class="label">Rider</div><div class="value">${esc(report.rider_name)}</div></div>
     </div>
-
     <div class="grid">
       <div class="metric"><div class="label">Rider Phone</div><div class="value">${esc(report.rider_phone || "-")}</div></div>
       <div class="metric"><div class="label">Total Batches</div><div class="value">${esc(report.total_batches)}</div></div>
@@ -138,10 +92,8 @@ function page(report: any) {
       <div class="metric"><div class="label">Overage</div><div class="value">${money(report.overage_amount)}</div></div>
       <div class="metric"><div class="label">Created At</div><div class="value">${esc(report.created_at || "-")}</div></div>
     </div>
-
     <div class="section-title">Notes</div>
     <div class="notes">${esc(report.note || "-")}</div>
-
     <div class="signatures">
       <div class="sig-box">Prepared By</div>
       <div class="sig-box">Rider Signature</div>
@@ -155,12 +107,12 @@ function page(report: any) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "GET") {
-      return res.status(405).send("Method not allowed");
+      return send(res, 405, { error: "Method not allowed" });
     }
 
     const reportId = String(req.query.report_id || "").trim();
     if (!reportId) {
-      return res.status(400).send("report_id is required");
+      return send(res, 400, { error: "report_id is required" });
     }
 
     const result = await supabaseAdmin
@@ -169,8 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq("report_id", reportId)
       .maybeSingle();
 
-    if (result.error) return res.status(500).send(result.error.message);
-    if (!result.data) return res.status(404).send("Rider handover report not found");
+    if (result.error) return send(res, 500, { error: result.error.message });
+    if (!result.data) return send(res, 404, { error: "Rider handover report not found" });
 
     await writeAuditLog({
       req,
@@ -180,9 +132,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       afterState: result.data,
     });
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(page(result.data));
+    const printUrl = `/api/v1/ways/rider-handover-print?report_id=${encodeURIComponent(reportId)}&format=html`;
+
+    if (wantsHtml(req)) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(page(result.data));
+    }
+
+    return send(res, 200, {
+      ok: true,
+      data: result.data,
+      print_url: printUrl,
+    });
   } catch (error: any) {
-    return res.status(500).send(error?.message || "Rider handover print API failed");
+    return send(res, 500, { error: error?.message || "Rider handover print API failed" });
   }
 }

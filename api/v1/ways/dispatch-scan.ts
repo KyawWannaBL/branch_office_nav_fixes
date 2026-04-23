@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
-import { writeAuditLog } from "../../_lib/auditLog";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);
@@ -20,128 +19,86 @@ function parseBody(req: VercelRequest) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    if (req.method !== "POST") {
+      return send(res, 405, { error: "Method not allowed" });
+    }
 
     const body = parseBody(req);
-    const dispatchBatchId = String(body.dispatch_batch_id || body.scan_code || "").trim();
+    const scanCode = String(body.scan_code || "").trim();
+    const scanType = String(body.scan_type || "VERIFY").trim();
     const scannedBy = String(body.scanned_by || "").trim();
     const note = String(body.note || "").trim();
 
-    if (!dispatchBatchId) return send(res, 400, { error: "dispatch_batch_id is required" });
+    if (!scanCode) return send(res, 400, { error: "scan_code is required" });
 
-    const batchRes = await supabaseAdmin
-      .from("dispatch_batches")
-      .select("*")
-      .eq("dispatch_batch_id", dispatchBatchId)
-      .maybeSingle();
-
-    if (batchRes.error) return send(res, 500, { error: batchRes.error.message });
-    if (!batchRes.data) return send(res, 404, { error: "Dispatch batch not found" });
-
-    const batch = batchRes.data;
-
-    const itemRes = await supabaseAdmin
-      .from("dispatch_batch_items")
-      .select("*")
-      .eq("dispatch_batch_id", dispatchBatchId);
-
-    if (itemRes.error) return send(res, 500, { error: itemRes.error.message });
-
-    const items = itemRes.data || [];
-    const deliveryIds = items.map((x: any) => x.delivery_id).filter(Boolean);
-
-    if (!deliveryIds.length) {
-      return send(res, 400, { error: "No ways linked to this dispatch batch" });
-    }
-
-    const waysRes = await supabaseAdmin
+    const fetchRes = await supabaseAdmin
       .from("delivery_orders")
       .select("*")
-      .in("delivery_id", deliveryIds);
+      .or(`delivery_id.eq.${scanCode},qr_value.eq.${scanCode}`)
+      .maybeSingle();
 
-    if (waysRes.error) return send(res, 500, { error: waysRes.error.message });
+    if (fetchRes.error) return send(res, 500, { error: fetchRes.error.message });
+    if (!fetchRes.data) return send(res, 404, { error: "Way not found for scan" });
 
-    const ways = waysRes.data || [];
+    const row = fetchRes.data;
     const now = new Date().toISOString();
 
-    const batchUpdateRes = await supabaseAdmin
-      .from("dispatch_batches")
-      .update({
-        status: "DISPATCHED",
-        dispatched_at: now,
-        dispatched_by: scannedBy || null,
-        dispatch_scan_code: dispatchBatchId,
-        dispatch_note: note || null,
-        updated_at: now,
-      })
-      .eq("dispatch_batch_id", dispatchBatchId)
+    const patch: Record<string, any> = {
+      last_scan_code: scanCode,
+      last_scan_type: scanType,
+      last_scan_at: now,
+      last_scan_by: scannedBy || null,
+      updated_at: now,
+    };
+
+    if (scanType === "OUT_FOR_DELIVERY") {
+      patch.delivery_status = "OUT_FOR_DELIVERY";
+      patch.out_for_delivery_at = now;
+    } else if (["STAGING_IN", "OUTBOUND_SCAN", "VERIFY"].includes(scanType)) {
+      if (!row.delivery_status || row.delivery_status === "SUBMITTED" || row.delivery_status === "SAVED") {
+        patch.delivery_status = "IN_TRANSIT";
+      }
+    }
+
+    const updateRes = await supabaseAdmin
+      .from("delivery_orders")
+      .update(patch)
+      .eq("delivery_id", row.delivery_id)
       .select("*")
       .single();
 
-    if (batchUpdateRes.error) return send(res, 500, { error: batchUpdateRes.error.message });
+    if (updateRes.error) return send(res, 500, { error: updateRes.error.message });
 
-    for (const row of ways) {
-      const updateRes = await supabaseAdmin
-        .from("delivery_orders")
-        .update({
-          delivery_status: "OUT_FOR_DELIVERY",
-          out_for_delivery_at: now,
-          last_scan_code: dispatchBatchId,
-          last_scan_type: "BATCH_DISPATCH_SCAN",
-          last_scan_at: now,
-          last_scan_by: scannedBy || null,
-          updated_at: now,
-        })
-        .eq("delivery_id", row.delivery_id);
-
-      if (updateRes.error) return send(res, 500, { error: updateRes.error.message });
-
-      await supabaseAdmin.from("delivery_scan_events").insert({
-        delivery_id: row.delivery_id,
-        pickup_id: row.pickup_id || null,
-        scan_code: dispatchBatchId,
-        scan_type: "BATCH_DISPATCH_SCAN",
-        scanned_by: scannedBy || null,
-      });
-
-      await supabaseAdmin.from("way_status_logs").insert({
-        delivery_id: row.delivery_id,
-        pickup_id: row.pickup_id || null,
-        action: "dispatch_batch_scan",
-        from_status: row.delivery_status || null,
-        to_status: "OUT_FOR_DELIVERY",
-        rider_name: row.rider_name || batch.rider_name || null,
-        rider_phone: row.rider_phone || batch.rider_phone || null,
-        note,
-        payload: {
-          dispatch_batch_id: dispatchBatchId,
-          scanned_by: scannedBy || null,
-        },
-      });
-    }
-
-    await writeAuditLog({
-      req,
-      action: "dispatch.batch.scan",
-      resourceType: "dispatch_batch",
-      resourceId: dispatchBatchId,
-      targetStatus: "DISPATCHED",
-      payload: body,
-      beforeState: batch,
-      afterState: batchUpdateRes.data,
+    const scanLog = await supabaseAdmin.from("delivery_scan_events").insert({
+      delivery_id: row.delivery_id,
+      pickup_id: row.pickup_id || null,
+      scan_code: scanCode,
+      scan_type: scanType,
+      scanned_by: scannedBy || null,
     });
 
-    return send(res, 200, {
-      ok: true,
-      data: {
-        dispatch_batch_id: dispatchBatchId,
-        total_ways: ways.length,
-        status: "DISPATCHED",
-        dispatched_at: now,
-        dispatched_by: scannedBy || null,
+    if (scanLog.error) return send(res, 500, { error: scanLog.error.message });
+
+    const wayLog = await supabaseAdmin.from("way_status_logs").insert({
+      delivery_id: row.delivery_id,
+      pickup_id: row.pickup_id || null,
+      action: "scan",
+      from_status: row.delivery_status || null,
+      to_status: updateRes.data.delivery_status || row.delivery_status || null,
+      rider_name: row.rider_name || null,
+      rider_phone: row.rider_phone || null,
+      note,
+      payload: {
+        scan_code: scanCode,
+        scan_type: scanType,
+        scanned_by: scannedBy || null,
       },
     });
+
+    if (wayLog.error) return send(res, 500, { error: wayLog.error.message });
+
+    return send(res, 200, { ok: true, data: updateRes.data });
   } catch (error: any) {
-    return send(res, 500, { error: error?.message || "Dispatch scan API failed" });
+    return send(res, 500, { error: error?.message || "Way scan API failed" });
   }
 }

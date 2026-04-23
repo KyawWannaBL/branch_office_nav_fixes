@@ -9,7 +9,11 @@ function send(res: VercelResponse, status: number, payload: unknown) {
 function parseBody(req: VercelRequest) {
   if (!req.body) return {};
   if (typeof req.body === "string") {
-    try { return JSON.parse(req.body); } catch { return {}; }
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
   }
   return req.body;
 }
@@ -21,7 +25,9 @@ function num(v: unknown) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    if (req.method !== "POST") return send(res, 405, { error: "Method not allowed" });
+    if (req.method !== "POST") {
+      return send(res, 405, { error: "Method not allowed" });
+    }
 
     const body = parseBody(req);
     const dispatchBatchId = String(body.dispatch_batch_id || "").trim();
@@ -89,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (updateRes.error) return send(res, 500, { error: updateRes.error.message });
 
     for (const row of ways) {
-      await supabaseAdmin.from("way_status_logs").insert({
+      const logRes = await supabaseAdmin.from("way_status_logs").insert({
         delivery_id: row.delivery_id,
         pickup_id: row.pickup_id || null,
         action: "dispatch_batch_closeout",
@@ -103,6 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           returned_by: returnedBy || null,
         },
       });
+
+      if (logRes.error) return send(res, 500, { error: logRes.error.message });
     }
 
     await writeAuditLog({

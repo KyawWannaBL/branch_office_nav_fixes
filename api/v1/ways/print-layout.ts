@@ -2,6 +2,17 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../../_lib/serverSupabase";
 import { writeAuditLog } from "../../_lib/auditLog";
 
+function send(res: VercelResponse, status: number, payload: unknown) {
+  return res.status(status).json(payload);
+}
+
+function wantsHtml(req: VercelRequest) {
+  const format = String(req.query.format || "").toLowerCase();
+  const accept = String(req.headers.accept || "").toLowerCase();
+  const dest = String(req.headers["sec-fetch-dest"] || "").toLowerCase();
+  return format === "html" || dest === "document" || accept.includes("text/html");
+}
+
 function esc(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -33,9 +44,6 @@ function htmlPage(title: string, subtitle: string, tableRows: string) {
   th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; }
   th { background: #f8fafc; font-weight: 800; }
   .right { text-align: right; }
-  .muted { color: #64748b; }
-  .meta { margin: 10px 0 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
-  .meta div { padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; }
   .footer { margin-top: 18px; font-size: 11px; color: #64748b; }
   .printbar { margin: 10px 0 16px; }
   .printbtn { border: none; background: #0f766e; color: #fff; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
@@ -49,9 +57,7 @@ function htmlPage(title: string, subtitle: string, tableRows: string) {
       <div class="title">${esc(title)}</div>
       <div class="sub">${esc(subtitle)}</div>
     </div>
-    <table>
-      ${tableRows}
-    </table>
+    <table>${tableRows}</table>
     <div class="footer">Britium Express Logistics Operations Platform</div>
   </div>
 </body>
@@ -61,7 +67,7 @@ function htmlPage(title: string, subtitle: string, tableRows: string) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "GET") {
-      return res.status(405).send("Method not allowed");
+      return send(res, 405, { error: "Method not allowed" });
     }
 
     const type = String(req.query.type || "MANIFEST").trim().toUpperCase();
@@ -69,7 +75,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
-
     const dispatchBatchId = String(req.query.dispatch_batch_id || "").trim();
 
     let deliveryRows: any[] = [];
@@ -80,10 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select("delivery_id")
         .eq("dispatch_batch_id", dispatchBatchId);
 
-      if (batchItemsRes.error) return res.status(500).send(batchItemsRes.error.message);
+      if (batchItemsRes.error) return send(res, 500, { error: batchItemsRes.error.message });
 
       const ids = (batchItemsRes.data || []).map((x: any) => x.delivery_id).filter(Boolean);
-      if (!ids.length) return res.status(404).send("No dispatch batch items found");
+      if (!ids.length) return send(res, 404, { error: "No dispatch batch items found" });
 
       const deliveryRes = await supabaseAdmin
         .from("delivery_orders")
@@ -91,17 +96,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .in("delivery_id", ids)
         .order("receiver_township", { ascending: true });
 
-      if (deliveryRes.error) return res.status(500).send(deliveryRes.error.message);
+      if (deliveryRes.error) return send(res, 500, { error: deliveryRes.error.message });
       deliveryRows = deliveryRes.data || [];
     } else {
-      if (!deliveryIds.length) return res.status(400).send("delivery_ids are required");
+      if (!deliveryIds.length) return send(res, 400, { error: "delivery_ids are required" });
+
       const deliveryRes = await supabaseAdmin
         .from("delivery_orders")
         .select("*")
         .in("delivery_id", deliveryIds)
         .order("receiver_township", { ascending: true });
 
-      if (deliveryRes.error) return res.status(500).send(deliveryRes.error.message);
+      if (deliveryRes.error) return send(res, 500, { error: deliveryRes.error.message });
       deliveryRows = deliveryRes.data || [];
     }
 
@@ -169,8 +175,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </tr>`;
     }).join("");
 
-    const html = htmlPage(title, subtitle, `${head}<tbody>${bodyRows}</tbody>`);
-
     await writeAuditLog({
       req,
       action: "dispatch.batch.print",
@@ -179,9 +183,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payload: { type, dispatchBatchId, deliveryIds },
     });
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(html);
+    const qs = new URLSearchParams();
+    qs.set("type", type);
+    if (dispatchBatchId) qs.set("dispatch_batch_id", dispatchBatchId);
+    if (!dispatchBatchId && deliveryIds.length) qs.set("delivery_ids", deliveryIds.join(","));
+    qs.set("format", "html");
+    const printUrl = `/api/v1/ways/print-layout?${qs.toString()}`;
+
+    if (wantsHtml(req)) {
+      const html = htmlPage(title, subtitle, `${head}<tbody>${bodyRows}</tbody>`);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(html);
+    }
+
+    return send(res, 200, {
+      ok: true,
+      data: {
+        title,
+        subtitle,
+        count: deliveryRows.length,
+        rows: deliveryRows,
+      },
+      print_url: printUrl,
+    });
   } catch (error: any) {
-    return res.status(500).send(error?.message || "Way print layout API failed");
+    return send(res, 500, { error: error?.message || "Way print layout API failed" });
   }
 }
