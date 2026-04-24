@@ -1,15 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ClipboardList,
-  Headset,
-  PackageSearch,
   PhoneCall,
   RefreshCw,
   Search,
+  ShieldCheck,
+  Truck,
 } from "lucide-react";
-import { readApiJson } from "@/lib/readApiJson";
 import { useT } from "@/hooks/useT";
 import { statusText } from "@/lib/statusText";
 
@@ -63,17 +61,54 @@ function money(v: any) {
   );
 }
 
-function normalizeError(error: any, fallback: string) {
-  const message = String(error?.message || fallback);
-  if (/Unexpected token .* valid JSON/i.test(message)) {
-    return "Server returned an invalid response";
+async function fetchPortal(q = "", selectedDeliveryId = "") {
+  const qs = new URLSearchParams();
+  if (q.trim()) qs.set("q", q.trim());
+  if (selectedDeliveryId) qs.set("selected_delivery_id", selectedDeliveryId);
+
+  const res = await fetch(`/api/v1/customer-service/portal?${qs.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  const text = await res.text();
+  const trimmed = String(text || "").trim();
+
+  if (!res.ok) {
+    throw new Error(trimmed || `${res.status} ${res.statusText}`);
   }
-  return message;
+
+  if (!trimmed) return { ok: true, data: {} };
+
+  if (trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html")) {
+    throw new Error("Customer service API returned HTML instead of JSON");
+  }
+
+  return JSON.parse(trimmed);
 }
 
-async function safeGet(url: string) {
-  const res = await fetch(url);
-  return readApiJson(res);
+async function postAction(body: Record<string, any>) {
+  const res = await fetch("/api/v1/customer-service/action", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const text = await res.text();
+  const trimmed = String(text || "").trim();
+
+  if (!res.ok) {
+    throw new Error(trimmed || `${res.status} ${res.statusText}`);
+  }
+
+  if (!trimmed) return { ok: true };
+  if (trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html")) {
+    throw new Error("Customer service action API returned HTML instead of JSON");
+  }
+
+  return JSON.parse(trimmed);
 }
 
 function KpiCard({
@@ -134,23 +169,27 @@ function RowCard({
   line1,
   line2,
   badge,
-  onClick,
   active = false,
+  onClick,
 }: {
   title: string;
   line1: string;
   line2?: string;
   badge?: string;
-  onClick?: () => void;
   active?: boolean;
+  onClick?: () => void;
 }) {
-  const body = (
-    <div
+  return (
+    <button
+      type="button"
+      onClick={onClick}
       style={{
         border: active ? "1px solid #93c5fd" : "1px solid #dbe4ee",
         borderRadius: 16,
         padding: 14,
         background: active ? "#eff6ff" : "#f8fafc",
+        textAlign: "left",
+        cursor: onClick ? "pointer" : "default",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
@@ -163,44 +202,7 @@ function RowCard({
       </div>
       <div style={{ marginTop: 6, color: "#334155", fontSize: 13 }}>{line1}</div>
       {line2 ? <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>{line2}</div> : null}
-    </div>
-  );
-
-  if (!onClick) return body;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: "none",
-        background: "transparent",
-        padding: 0,
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      {body}
     </button>
-  );
-}
-
-function ActionLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        textDecoration: "none",
-        border: "1px solid #dbe4ee",
-        borderRadius: 14,
-        padding: 12,
-        color: "#0f172a",
-        fontWeight: 700,
-        background: "#fff",
-      }}
-    >
-      {label}
-    </Link>
   );
 }
 
@@ -227,83 +229,83 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
 export default function CustomerServicePortal() {
   const { lang, t: tr } = useT();
 
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
-  const [lookupRows, setLookupRows] = useState<AnyRow[]>([]);
-  const [selected, setSelected] = useState<AnyRow | null>(null);
-  const [failedRows, setFailedRows] = useState<AnyRow[]>([]);
-  const [podRows, setPodRows] = useState<AnyRow[]>([]);
-  const [returnedRows, setReturnedRows] = useState<AnyRow[]>([]);
+  const [message, setMessage] = useState("");
+  const [payload, setPayload] = useState<any>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [actionNote, setActionNote] = useState("");
+  const [updatedAddress, setUpdatedAddress] = useState("");
+  const [updatedTownship, setUpdatedTownship] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  async function loadPortal(searchValue = query) {
+  async function loadData(search = query, focusId = selectedId) {
     setLoading(true);
-    setMessage("");
-
-    const lookupQs = new URLSearchParams();
-    if (searchValue.trim()) lookupQs.set("q", searchValue.trim());
-
-    const results = await Promise.allSettled([
-      safeGet(`/api/v1/deliveries/workflow?${lookupQs.toString()}`),
-      safeGet("/api/v1/delivery-exceptions?queue=failed"),
-      safeGet("/api/v1/delivery-exceptions?queue=pod"),
-      safeGet("/api/v1/delivery-exceptions?queue=returned"),
-    ]);
-
-    const lookup = results[0].status === "fulfilled" ? results[0].value : null;
-    const failed = results[1].status === "fulfilled" ? results[1].value : null;
-    const pod = results[2].status === "fulfilled" ? results[2].value : null;
-    const returned = results[3].status === "fulfilled" ? results[3].value : null;
-
-    if (results.every((r) => r.status === "rejected")) {
-      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-      setMessage(normalizeError(first?.reason, "Failed to load customer service portal"));
-    } else {
-      const rejectedCount = results.filter((r) => r.status === "rejected").length;
-      if (rejectedCount > 0) {
-        setMessage("Some customer service widgets could not be loaded, but the portal is available.");
+    try {
+      const data = await fetchPortal(search, focusId);
+      setPayload(data.data || {});
+      const selected = data.data?.selected || null;
+      setSelectedId(selected?.delivery_id || "");
+      setUpdatedAddress(selected?.receiver_address || "");
+      setUpdatedTownship(selected?.receiver_township || "");
+      const warnings = Array.isArray(data.data?.warnings) ? data.data.warnings : [];
+      if (warnings.length) {
+        setMessage(`Some sources were unavailable: ${warnings.slice(0, 3).join(" | ")}`);
+      } else {
+        setMessage("");
       }
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load customer service portal");
+      setPayload(null);
+      setSelectedId("");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runAction(action: string) {
+    if (!selectedId) {
+      setMessage("Select a shipment first.");
+      return;
     }
 
-    const lookupList = Array.isArray(lookup?.data) ? lookup.data : [];
-    const failedList = Array.isArray(failed?.data) ? failed.data : [];
-    const podList = Array.isArray(pod?.data) ? pod.data : [];
-    const returnedList = Array.isArray(returned?.data) ? returned.data : [];
+    try {
+      const data = await postAction({
+        action,
+        delivery_id: selectedId,
+        note: actionNote,
+        updated_address: updatedAddress,
+        updated_township: updatedTownship,
+      });
 
-    setLookupRows(lookupList);
-    setFailedRows(failedList);
-    setPodRows(podList);
-    setReturnedRows(returnedList);
-
-    setSelected((prev) => {
-      if (!lookupList.length) return null;
-      if (!prev) return lookupList[0];
-      return lookupList.find((x: AnyRow) => x.delivery_id === prev.delivery_id) || lookupList[0];
-    });
-
-    setLoading(false);
+      setMessage(data?.message || "Action completed");
+      await loadData(query, selectedId);
+    } catch (error: any) {
+      setMessage(error?.message || "Customer service action failed");
+    }
   }
 
   useEffect(() => {
-    void loadPortal("");
+    void loadData("", "");
   }, []);
 
-  const stats = useMemo(() => {
-    const delivered = lookupRows.filter((x) => String(x.delivery_status || x.status || "").toUpperCase() === "DELIVERED").length;
-    const outForDelivery = lookupRows.filter((x) => String(x.delivery_status || x.status || "").toUpperCase() === "OUT_FOR_DELIVERY").length;
-    const failed = lookupRows.filter((x) => String(x.delivery_status || x.status || "").toUpperCase() === "FAILED_ATTEMPT").length;
+  const lookupResults = payload?.lookup_results || [];
+  const selected = payload?.selected || null;
+  const timeline = payload?.timeline || [];
+  const evidence = payload?.evidence || [];
+  const merchantChildren = payload?.merchant_children || [];
+  const failedQueue = payload?.failed_queue || [];
+  const podReviewQueue = payload?.pod_review_queue || [];
+  const returnedQueue = payload?.returned_queue || [];
+  const slaQueue = payload?.sla_queue || [];
+  const kpis = payload?.kpis || {};
 
-    return {
-      lookupResults: lookupRows.length,
-      delivered,
-      outForDelivery,
-      failed,
-      failedQueue: failedRows.length,
-      podQueue: podRows.length,
-      returnedQueue: returnedRows.length,
-      totalOpenTickets: failedRows.length + podRows.length + returnedRows.length,
-    };
-  }, [lookupRows, failedRows, podRows, returnedRows]);
+  const openSupportQueues = useMemo(() => {
+    const ids = new Set<string>();
+    [...failedQueue, ...podReviewQueue, ...returnedQueue, ...slaQueue].forEach((x: AnyRow) =>
+      ids.add(String(x.delivery_id || ""))
+    );
+    return ids.size;
+  }, [failedQueue, podReviewQueue, returnedQueue, slaQueue]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -342,7 +344,7 @@ export default function CustomerServicePortal() {
 
         <button
           type="button"
-          onClick={() => void loadPortal()}
+          onClick={() => void loadData(query, selectedId)}
           style={{
             ...secondaryBtn,
             display: "inline-flex",
@@ -394,7 +396,7 @@ export default function CustomerServicePortal() {
 
         <button
           type="button"
-          onClick={() => void loadPortal(query)}
+          onClick={() => void loadData(query, selectedId)}
           style={{
             ...primaryBtn,
             display: "inline-flex",
@@ -410,7 +412,7 @@ export default function CustomerServicePortal() {
           type="button"
           onClick={() => {
             setQuery("");
-            void loadPortal("");
+            void loadData("", "");
           }}
           style={secondaryBtn}
         >
@@ -419,10 +421,10 @@ export default function CustomerServicePortal() {
       </section>
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
-        <KpiCard icon={<PackageSearch size={18} />} label={tr("Lookup Results")} value={String(stats.lookupResults)} tone="info" />
-        <KpiCard icon={<PhoneCall size={18} />} label={tr("Out for Delivery")} value={String(stats.outForDelivery)} tone="good" />
-        <KpiCard icon={<AlertTriangle size={18} />} label={tr("Open Support Queues")} value={String(stats.totalOpenTickets)} tone="warn" />
-        <KpiCard icon={<ClipboardList size={18} />} label={tr("POD Review Queue")} value={String(stats.podQueue)} />
+        <KpiCard icon={<ClipboardList size={18} />} label={tr("Lookup Results")} value={String(kpis.lookup_results || 0)} tone="info" />
+        <KpiCard icon={<ShieldCheck size={18} />} label={tr("Delivered Visible")} value={String(kpis.delivered_visible || 0)} tone="good" />
+        <KpiCard icon={<AlertTriangle size={18} />} label={tr("Open Support Queues")} value={String(openSupportQueues)} tone="warn" />
+        <KpiCard icon={<Truck size={18} />} label={tr("POD Review Queue")} value={String(kpis.pod_review_queue || 0)} />
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 18 }}>
@@ -431,20 +433,20 @@ export default function CustomerServicePortal() {
             title={tr("Shipment Lookup Results")}
             action={
               <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                {lookupRows.length} result(s)
+                {lookupResults.length} result(s)
               </span>
             }
           >
-            {lookupRows.length ? (
-              lookupRows.slice(0, 12).map((row: AnyRow) => (
+            {lookupResults.length ? (
+              lookupResults.map((row: AnyRow) => (
                 <RowCard
                   key={row.delivery_id}
-                  active={selected?.delivery_id === row.delivery_id}
-                  onClick={() => setSelected(row)}
+                  active={selectedId === row.delivery_id}
+                  onClick={() => void loadData(query, row.delivery_id)}
                   title={safe(row.delivery_id)}
-                  badge={statusText(lang, row.delivery_status || row.status)}
+                  badge={statusText(lang, row.delivery_status)}
                   line1={`${safe(row.receiver_name)} · ${safe(row.receiver_phone)}`}
-                  line2={`${safe(row.pickup_id)} · ${safe(row.receiver_township || row.township)} · ${tr("Rider")}: ${safe(row.rider_name)}`}
+                  line2={`${safe(row.pickup_id)} · ${safe(row.receiver_township)} · ${tr("Merchant")}: ${safe(row.merchant_name)}`}
                 />
               ))
             ) : (
@@ -455,19 +457,39 @@ export default function CustomerServicePortal() {
           </Panel>
 
           <Panel title={tr("Failed Attempt Queue")}>
-            {failedRows.length ? (
-              failedRows.slice(0, 6).map((row: AnyRow) => (
+            {failedQueue.length ? (
+              failedQueue.map((row: AnyRow) => (
                 <RowCard
-                  key={row.delivery_id}
+                  key={`failed-${row.delivery_id}`}
                   title={safe(row.delivery_id)}
                   badge={statusText(lang, row.delivery_status)}
-                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township || row.township)}`}
-                  line2={`${tr("Rider")}: ${safe(row.rider_name)} · ${tr("Pickup ID")}: ${safe(row.pickup_id)}`}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township)}`}
+                  line2={`${tr("Rider")}: ${safe(row.rider_name)} · ${tr("Updated")}: ${safe(row.updated_at)}`}
+                  onClick={() => void loadData(query, row.delivery_id)}
                 />
               ))
             ) : (
               <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading customer service portal...") : tr("No failed-attempt records found.")}
+                {tr("No failed-attempt records found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("SLA Breach Queue")}>
+            {slaQueue.length ? (
+              slaQueue.map((row: AnyRow) => (
+                <RowCard
+                  key={`sla-${row.delivery_id}`}
+                  title={safe(row.delivery_id)}
+                  badge={statusText(lang, row.delivery_status)}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township)}`}
+                  line2={`${tr("Updated")}: ${safe(row.updated_at)}`}
+                  onClick={() => void loadData(query, row.delivery_id)}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {tr("No SLA breach records found.")}
               </div>
             )}
           </Panel>
@@ -480,61 +502,207 @@ export default function CustomerServicePortal() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                   <DetailMetric label={tr("Delivery ID")} value={safe(selected.delivery_id)} />
                   <DetailMetric label={tr("Pickup ID")} value={safe(selected.pickup_id)} />
-                  <DetailMetric label={tr("Status")} value={statusText(lang, selected.delivery_status || selected.status)} />
+                  <DetailMetric label={tr("Status")} value={statusText(lang, selected.delivery_status)} />
+                  <DetailMetric label={tr("Merchant")} value={safe(selected.merchant_name)} />
                   <DetailMetric label={tr("Receiver")} value={safe(selected.receiver_name)} />
-                  <DetailMetric label={tr("Phone")} value={safe(selected.receiver_phone)} />
-                  <DetailMetric label={tr("Township")} value={safe(selected.receiver_township || selected.township)} />
-                  <DetailMetric label={tr("Address")} value={safe(selected.receiver_address || selected.delivery_address)} />
-                  <DetailMetric label={tr("Rider")} value={safe(selected.rider_name)} />
-                  <DetailMetric label={tr("Rider Phone")} value={safe(selected.rider_phone)} />
-                  <DetailMetric label={tr("Receivable")} value={`${money(selected.waybill_total_cod || selected.receivable || 0)} MMK`} />
+                  <DetailMetric label={tr("Receiver Phone")} value={safe(selected.receiver_phone)} />
+                  <DetailMetric label={tr("Township")} value={safe(selected.receiver_township)} />
+                  <DetailMetric label={tr("Rider")} value={`${safe(selected.rider_name)} / ${safe(selected.rider_phone)}`} />
+                  <DetailMetric label={tr("COD Amount")} value={`${money(selected.cod_amount || 0)} MMK`} />
+                  <DetailMetric
+                    label={tr("Delivery Fee")}
+                    value={`${money((selected.base_fee || 0) + (selected.surcharge || 0))} MMK`}
+                  />
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-                  <ActionLink to="/delivery-workflow" label={tr("Open Delivery Workflow")} />
-                  <ActionLink to="/delivery-exceptions" label={tr("Open Delivery Exceptions")} />
-                  <ActionLink to="/audit-logs" label={tr("Open Audit Logs")} />
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#475569" }}>
+                    {tr("Receiver Address")}
+                  </div>
+                  <div style={{ border: "1px solid #dbe4ee", borderRadius: 14, padding: 12, background: "#f8fafc" }}>
+                    {safe(selected.receiver_address)}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
+                      {tr("Updated Address")}
+                    </div>
+                    <textarea
+                      style={{ ...inputStyle, minHeight: 92 }}
+                      value={updatedAddress}
+                      onChange={(e) => setUpdatedAddress(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
+                      {tr("Updated Township")}
+                    </div>
+                    <input
+                      style={inputStyle}
+                      value={updatedTownship}
+                      onChange={(e) => setUpdatedTownship(e.target.value)}
+                    />
+                    <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginTop: 12, marginBottom: 6 }}>
+                      {tr("Action Note")}
+                    </div>
+                    <textarea
+                      style={{ ...inputStyle, minHeight: 92 }}
+                      value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button type="button" style={primaryBtn} onClick={() => void runAction("reattempt")}>
+                    {tr("Re-attempt Delivery")}
+                  </button>
+                  <button type="button" style={secondaryBtn} onClick={() => void runAction("rts")}>
+                    {tr("Return to Sender")}
+                  </button>
+                  <button type="button" style={secondaryBtn} onClick={() => void runAction("update_address")}>
+                    {tr("Update Address")}
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...primaryBtn, display: "inline-flex", alignItems: "center", gap: 8 }}
+                    onClick={() => void runAction("ping_rider")}
+                  >
+                    <PhoneCall size={16} />
+                    {tr("Ping Rider")}
+                  </button>
+                  <button type="button" style={secondaryBtn} onClick={() => void runAction("rescue")}>
+                    {tr("Emergency Rescue")}
+                  </button>
+                  <button type="button" style={secondaryBtn} onClick={() => void runAction("reroute_branch")}>
+                    {tr("Re-route Branch")}
+                  </button>
                 </div>
               </>
             ) : (
               <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading customer service portal...") : tr("Select a shipment to view details.")}
+                {tr("Select a shipment to view details.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Live Timeline")}>
+            {timeline.length ? (
+              timeline.map((row: AnyRow, index: number) => (
+                <div
+                  key={`${row.source}-${index}-${row.created_at}`}
+                  style={{
+                    borderLeft: "3px solid #cbd5e1",
+                    paddingLeft: 12,
+                    marginLeft: 4,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#0f172a" }}>{safe(row.action)}</div>
+                  <div style={{ color: "#475569", fontSize: 12, marginTop: 4 }}>
+                    {safe(row.actor_name)} · {safe(row.actor_role)} · {safe(row.created_at)}
+                  </div>
+                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                    {safe(row.from_value, "")} {row.from_value || row.to_value ? "→" : ""} {safe(row.to_value, "")}
+                  </div>
+                  {row.note ? (
+                    <div style={{ color: "#64748b", fontSize: 12, marginTop: 4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {safe(row.note)}
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {tr("No timeline records found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Evidence Gallery")}>
+            {evidence.length ? (
+              evidence.map((row: AnyRow) => (
+                <a
+                  key={row.id}
+                  href={row.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    textDecoration: "none",
+                    border: "1px solid #dbe4ee",
+                    borderRadius: 14,
+                    padding: 12,
+                    background: "#f8fafc",
+                    color: "#0f172a",
+                  }}
+                >
+                  <div style={{ fontWeight: 900 }}>{safe(row.attachment_type)}</div>
+                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                    {safe(row.reference_type)} · {safe(row.created_at)}
+                  </div>
+                </a>
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {tr("No evidence attachments found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Merchant Batch View")}>
+            {merchantChildren.length ? (
+              merchantChildren.map((row: AnyRow) => (
+                <RowCard
+                  key={`child-${row.delivery_id}`}
+                  title={safe(row.delivery_id)}
+                  badge={statusText(lang, row.delivery_status)}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township)}`}
+                  line2={`${tr("COD")}: ${money(row.cod_amount || 0)} MMK`}
+                  onClick={() => void loadData(query, row.delivery_id)}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {tr("No related pickup-child deliveries found.")}
               </div>
             )}
           </Panel>
 
           <Panel title={tr("POD Review Queue")}>
-            {podRows.length ? (
-              podRows.slice(0, 6).map((row: AnyRow) => (
+            {podReviewQueue.length ? (
+              podReviewQueue.map((row: AnyRow) => (
                 <RowCard
-                  key={row.delivery_id}
+                  key={`pod-${row.delivery_id}`}
                   title={safe(row.delivery_id)}
                   badge={statusText(lang, row.delivery_status)}
-                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township || row.township)}`}
-                  line2={`${tr("Rider")}: ${safe(row.rider_name)} · ${tr("Receiver Phone")}: ${safe(row.receiver_phone)}`}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township)}`}
+                  line2={`${tr("Rider")}: ${safe(row.rider_name)}`}
+                  onClick={() => void loadData(query, row.delivery_id)}
                 />
               ))
             ) : (
               <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading customer service portal...") : tr("No POD review records found.")}
+                {tr("No POD review records found.")}
               </div>
             )}
           </Panel>
 
           <Panel title={tr("Returned Queue")}>
-            {returnedRows.length ? (
-              returnedRows.slice(0, 6).map((row: AnyRow) => (
+            {returnedQueue.length ? (
+              returnedQueue.map((row: AnyRow) => (
                 <RowCard
-                  key={row.delivery_id}
+                  key={`return-${row.delivery_id}`}
                   title={safe(row.delivery_id)}
                   badge={statusText(lang, row.delivery_status)}
-                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township || row.township)}`}
-                  line2={`${tr("Pickup ID")}: ${safe(row.pickup_id)} · ${tr("Rider")}: ${safe(row.rider_name)}`}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township)}`}
+                  line2={`${tr("Rider")}: ${safe(row.rider_name)}`}
+                  onClick={() => void loadData(query, row.delivery_id)}
                 />
               ))
             ) : (
               <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading customer service portal...") : tr("No returned records found.")}
+                {tr("No returned records found.")}
               </div>
             )}
           </Panel>
