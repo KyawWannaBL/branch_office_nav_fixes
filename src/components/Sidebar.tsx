@@ -14,7 +14,7 @@ import {
   Receipt,
   ShieldCheck,
   Truck,
-  Wallet, Headset, Store, Megaphone, UserRound, Users, Settings2, Crown } from "lucide-react";
+  Wallet, Headset, Store, Megaphone, UserRound, Users, Settings2, Crown, Building2 } from "lucide-react";
 
 import { useT } from "@/hooks/useT";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -37,6 +37,7 @@ const sections: NavSection[] = [
       { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
       { title: "Operations Admin", path: "/operations-admin", icon: Settings2 },
       { title: "Super Admin", path: "/super-admin", icon: Crown },
+      { title: "Branch Office", path: "/branch-office", icon: Building2 },
       { title: "Pickup Registration", path: "/pickup-registration", icon: Package },
       { title: "Delivery Registration", path: "/delivery-registration", icon: Package },
       { title: "Way Management", path: "/way-management", icon: Package },

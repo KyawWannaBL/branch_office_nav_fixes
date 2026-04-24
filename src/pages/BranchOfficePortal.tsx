@@ -1,307 +1,519 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Building2,
-  CalendarClock,
-  CheckCircle2,
-  Clock3,
-  Globe2,
-  MapPin,
-  Package2,
+  ClipboardList,
+  DollarSign,
+  Map,
+  Package,
   RefreshCw,
   ShieldCheck,
   Truck,
-  WalletCards,
-  AlertTriangle,
+  Users,
+  Warehouse,
 } from "lucide-react";
+import { readApiJson } from "@/lib/readApiJson";
+import { useT } from "@/hooks/useT";
+import { statusText } from "@/lib/statusText";
 
-type Language = "en" | "my" | "both";
+type AnyRow = Record<string, any>;
 
-type QueueRow = {
-  id: string;
-  awb: string;
-  customer: string;
-  township: string;
-  status: string;
-  assignee: string;
+const card: React.CSSProperties = {
+  border: "1px solid #dbe4ee",
+  borderRadius: 22,
+  background: "#fff",
+  padding: 18,
+  boxShadow: "0 10px 24px rgba(15,23,42,.04)",
 };
 
-type CashRow = {
-  batch: string;
-  amount: string;
-  state: string;
-  updated: string;
+const secondaryBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f2f5c",
+  color: "#fff",
+  padding: "12px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
-function bi(language: Language, en: string, my: string) {
-  if (language === "en") return en;
-  if (language === "my") return my;
-  return `${en} / ${my}`;
+function safe(v: any, fb = "-") {
+  return v === null || v === undefined || v === "" ? fb : String(v);
 }
 
-function badgeClass(status: string) {
-  const token = status.toUpperCase();
-  if (["DELIVERED", "READY", "ACTIVE", "CLEARED"].includes(token)) return "bg-emerald-100 text-emerald-700";
-  if (["PENDING", "HOLD", "IN_TRANSIT", "QUEUE"].includes(token)) return "bg-amber-100 text-amber-700";
-  if (["FAILED", "ESCALATED", "BLOCKED"].includes(token)) return "bg-rose-100 text-rose-700";
-  return "bg-slate-100 text-slate-700";
-}
-
-function Surface({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
-      {children}
-    </div>
+function money(v: any) {
+  const n = Number(v ?? 0);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
+    Number.isFinite(n) ? n : 0
   );
 }
 
-function SectionTitle({
-  eyebrow,
-  title,
-  subtitle,
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="mb-5">
-      <div className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">{eyebrow}</div>
-      <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900">{title}</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{subtitle}</p>
-    </div>
-  );
+function normalizeError(error: any, fallback: string) {
+  const message = String(error?.message || fallback);
+  if (/Unexpected token .* valid JSON/i.test(message)) {
+    return "Server returned an invalid response";
+  }
+  return message;
+}
+
+async function safeGet(url: string) {
+  const res = await fetch(url);
+  return readApiJson(res);
 }
 
 function KpiCard({
-  icon: Icon,
+  icon,
   label,
   value,
-  caption,
+  tone = "default",
 }: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ReactNode;
   label: string;
   value: string;
-  caption: string;
+  tone?: "default" | "good" | "warn" | "info";
+}) {
+  const bg =
+    tone === "good"
+      ? "linear-gradient(135deg,#ecfdf5 0%,#f0fdf4 100%)"
+      : tone === "warn"
+        ? "linear-gradient(135deg,#fff7ed 0%,#fef3c7 100%)"
+        : tone === "info"
+          ? "linear-gradient(135deg,#eff6ff 0%,#eef2ff 100%)"
+          : "#fff";
+
+  return (
+    <div style={{ ...card, background: bg, padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+          {label}
+        </div>
+        <div style={{ color: "#0f172a" }}>{icon}</div>
+      </div>
+      <div style={{ marginTop: 12, fontSize: 28, fontWeight: 900, color: "#0f172a" }}>{value}</div>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <Surface>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400">{label}</div>
-          <div className="mt-3 text-3xl font-black tracking-tight text-slate-900">{value}</div>
-          <div className="mt-2 text-sm text-slate-500">{caption}</div>
-        </div>
-        <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
-          <Icon size={18} />
-        </div>
+    <section style={card}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{title}</div>
+        {action}
       </div>
-    </Surface>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
+    </section>
+  );
+}
+
+function RowCard({
+  title,
+  line1,
+  line2,
+  badge,
+}: {
+  title: string;
+  line1: string;
+  line2?: string;
+  badge?: string;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #dbe4ee",
+        borderRadius: 16,
+        padding: 14,
+        background: "#f8fafc",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <strong style={{ color: "#0f172a" }}>{title}</strong>
+        {badge ? (
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#475569" }}>
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <div style={{ marginTop: 6, color: "#334155", fontSize: 13 }}>{line1}</div>
+      {line2 ? <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>{line2}</div> : null}
+    </div>
+  );
+}
+
+function ActionLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        textDecoration: "none",
+        border: "1px solid #dbe4ee",
+        borderRadius: 14,
+        padding: 12,
+        color: "#0f172a",
+        fontWeight: 700,
+        background: "#fff",
+      }}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #dbe4ee",
+        borderRadius: 16,
+        padding: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
+        {value}
+      </div>
+    </div>
   );
 }
 
 export default function BranchOfficePortal() {
-  const [language, setLanguage] = useState<Language>("both");
-  const [branchCode] = useState("BEX-YGN-HQ");
-  const [search, setSearch] = useState("");
+  const { t: tr } = useT();
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [payload, setPayload] = useState<any>(null);
 
-  const queueRows = useMemo<QueueRow[]>(
-    () => [
-      { id: "1", awb: "BEX-24041001", customer: "Ko Min Zaw", township: "Kamayut", status: "QUEUE", assignee: "Dispatch Desk A" },
-      { id: "2", awb: "BEX-24041002", customer: "Daw Hnin Ei", township: "Sanchaung", status: "IN_TRANSIT", assignee: "Rider R-21" },
-      { id: "3", awb: "BEX-24041003", customer: "Ko Thet Naing", township: "Hlaing", status: "HOLD", assignee: "Warehouse Gate 2" },
-      { id: "4", awb: "BEX-24041004", customer: "Ma Pwint", township: "Insein", status: "DELIVERED", assignee: "Rider R-18" },
-    ],
-    []
-  );
+  async function loadPortal() {
+    setLoading(true);
+    setMessage("");
 
-  const cashRows = useMemo<CashRow[]>(
-    () => [
-      { batch: "COD-2026-04-10-A", amount: "2,450,000 MMK", state: "PENDING", updated: "10:20 AM" },
-      { batch: "COD-2026-04-10-B", amount: "1,180,000 MMK", state: "CLEARED", updated: "09:45 AM" },
-      { batch: "COD-2026-04-09-C", amount: "980,000 MMK", state: "CLEARED", updated: "Yesterday" },
-    ],
-    []
-  );
+    const results = await Promise.allSettled([
+      safeGet("/api/v1/operations/command-center"),
+      safeGet("/api/v1/riders/portal"),
+      safeGet("/api/v1/deliveries/workflow"),
+      safeGet("/api/v1/ways/dispatch-batches"),
+      safeGet("/api/v1/delivery-exceptions?queue=failed"),
+      safeGet("/api/v1/pickups?limit=250"),
+      safeGet("/api/v1/master/tariffs"),
+      safeGet("/api/v1/audit/logs?limit=200"),
+    ]);
 
-  const filteredQueue = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return queueRows;
-    return queueRows.filter((row) =>
-      [row.awb, row.customer, row.township, row.status, row.assignee].join(" ").toLowerCase().includes(q)
-    );
-  }, [queueRows, search]);
+    const commandCenter = results[0].status === "fulfilled" ? results[0].value : null;
+    const riderPortal = results[1].status === "fulfilled" ? results[1].value : null;
+    const workflow = results[2].status === "fulfilled" ? results[2].value : null;
+    const batches = results[3].status === "fulfilled" ? results[3].value : null;
+    const exceptions = results[4].status === "fulfilled" ? results[4].value : null;
+    const pickups = results[5].status === "fulfilled" ? results[5].value : null;
+    const tariffs = results[6].status === "fulfilled" ? results[6].value : null;
+    const audit = results[7].status === "fulfilled" ? results[7].value : null;
+
+    if (results.every((r) => r.status === "rejected")) {
+      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      setMessage(normalizeError(first?.reason, "Failed to load branch office portal"));
+      setPayload(null);
+      setLoading(false);
+      return;
+    }
+
+    const rejectedCount = results.filter((r) => r.status === "rejected").length;
+    if (rejectedCount > 0) {
+      setMessage("Some branch office widgets could not be loaded, but the portal is available.");
+    }
+
+    setPayload({
+      commandCenter: commandCenter?.data || null,
+      riderPortal: riderPortal?.data || null,
+      workflow: Array.isArray(workflow?.data) ? workflow.data : [],
+      batches: Array.isArray(batches?.data) ? batches.data : [],
+      exceptions: Array.isArray(exceptions?.data) ? exceptions.data : [],
+      pickups: Array.isArray(pickups?.data)
+        ? pickups.data
+        : Array.isArray((pickups as any)?.pickups)
+          ? (pickups as any).pickups
+          : [],
+      tariffs: Array.isArray(tariffs?.data) ? tariffs.data : [],
+      audit: Array.isArray(audit?.data) ? audit.data : [],
+      apiHealth: {
+        commandCenter: results[0].status === "fulfilled",
+        riderPortal: results[1].status === "fulfilled",
+        workflow: results[2].status === "fulfilled",
+        batches: results[3].status === "fulfilled",
+        exceptions: results[4].status === "fulfilled",
+        pickups: results[5].status === "fulfilled",
+        tariffs: results[6].status === "fulfilled",
+        audit: results[7].status === "fulfilled",
+      },
+    });
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadPortal();
+  }, []);
+
+  const stats = useMemo(() => {
+    const workflowRows = payload?.workflow || [];
+    const batchRows = payload?.batches || [];
+    const exceptionRows = payload?.exceptions || [];
+    const pickupRows = payload?.pickups || [];
+    const tariffRows = payload?.tariffs || [];
+    const auditRows = payload?.audit || [];
+    const riderSummary = payload?.riderPortal?.driver_summary || [];
+
+    const openWays = workflowRows.filter((x: AnyRow) => {
+      const s = String(x.delivery_status || x.status || "").toUpperCase();
+      return ["SAVED", "SUBMITTED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "FAILED_ATTEMPT"].includes(s);
+    }).length;
+
+    const delivered = workflowRows.filter((x: AnyRow) => String(x.delivery_status || x.status || "").toUpperCase() === "DELIVERED").length;
+    const activeBatches = batchRows.filter((x: AnyRow) => String(x.status || "").toUpperCase() !== "CLOSED").length;
+    const activeDrivers = riderSummary.length;
+    const codOpen = workflowRows.reduce((sum: number, x: AnyRow) => sum + Number(x.waybill_total_cod || x.receivable || 0), 0);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const pickupsToday = pickupRows.filter((x: AnyRow) =>
+      String(x.pickup_date || x.created_at || "").slice(0, 10) === today
+    ).length;
+
+    const auditToday = auditRows.filter((x: AnyRow) =>
+      String(x.occurred_at || "").slice(0, 10) === today
+    ).length;
+
+    return {
+      openWays,
+      delivered,
+      activeBatches,
+      activeDrivers,
+      codOpen,
+      exceptionCount: exceptionRows.length,
+      pickupsToday,
+      tariffCount: tariffRows.length,
+      auditToday,
+    };
+  }, [payload]);
+
+  const topBatches = useMemo(() => (payload?.batches || []).slice(0, 8), [payload]);
+  const topExceptions = useMemo(() => (payload?.exceptions || []).slice(0, 8), [payload]);
+  const riderSummary = useMemo(() => (payload?.riderPortal?.driver_summary || []).slice(0, 8), [payload]);
+  const commandKpis = payload?.commandCenter?.kpis || {};
+
+  const branchAuditFeed = useMemo(() => {
+    const rows = payload?.audit || [];
+    return rows
+      .filter((x: AnyRow) => {
+        const text = [
+          x.action,
+          x.resource_type,
+          x.actor_role,
+          x.actor_name,
+          x.actor_email,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return (
+          text.includes("dispatch") ||
+          text.includes("pickup") ||
+          text.includes("delivery") ||
+          text.includes("rider") ||
+          text.includes("finance") ||
+          text.includes("audit") ||
+          text.includes("branch") ||
+          text.includes("operations")
+        );
+      })
+      .slice(0, 10);
+  }, [payload]);
 
   return (
-    <div className="space-y-6">
-      <Surface className="overflow-hidden bg-[linear-gradient(135deg,#061120_0%,#0d2340_60%,#16345d_100%)] text-white shadow-[0_24px_70px_rgba(2,6,23,0.22)]">
-        <div className="grid gap-6 lg:grid-cols-[1.35fr_0.85fr]">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-white/80">
-              <Building2 size={14} />
-              {bi(language, "Branch Office Portal", "Branch Office Portal / ရုံးခွဲပေါ်တယ်")}
-            </div>
-            <h1 className="mt-4 text-4xl font-black tracking-tight">
-              {bi(language, "Branch Operations Command", "ရုံးခွဲလုပ်ငန်းလည်ပတ်မှုထိန်းချုပ်စင်တာ")}
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75">
-              {bi(
-                language,
-                "Monitor dispatch queue, branch workload, warehouse coordination, COD follow-up, and customer-service escalations from one branch workspace.",
-                "Dispatch queue, ရုံးခွဲအလုပ်भार, warehouse coordination, COD follow-up နှင့် customer-service escalation များကို ရုံးခွဲတစ်နေရာတည်းမှ စီမံနိုင်သည်။"
-              )}
-            </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <section
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 18,
+          alignItems: "flex-start",
+          background: "linear-gradient(135deg,#ffffff 0%,#f8fbff 50%,#eefcf7 100%)",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#ecfeff",
+              color: "#155e75",
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".12em",
+            }}
+          >
+            {tr("Branch Operations")}
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-[24px] border border-white/10 bg-white/10 p-5">
-              <div className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
-                {bi(language, "Branch Code", "ရုံးခွဲကုဒ်")}
-              </div>
-              <div className="mt-3 text-2xl font-black">{branchCode}</div>
-            </div>
-            <div className="rounded-[24px] border border-white/10 bg-white/10 p-5">
-              <div className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
-                {bi(language, "Queue Health", "Queue အခြေအနေ")}
-              </div>
-              <div className="mt-3 text-2xl font-black">Stable</div>
-            </div>
-          </div>
-        </div>
-      </Surface>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-          <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
-            <Globe2 size={14} />
-            <span>Language</span>
-          </div>
-          {[
-            { value: "en", label: "EN" },
-            { value: "my", label: "မြန်မာ" },
-            { value: "both", label: "EN + မြန်မာ" },
-          ].map((item) => {
-            const active = item.value === language;
-            return (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setLanguage(item.value as Language)}
-                className={[
-                  "rounded-xl px-3 py-2 text-sm font-semibold transition",
-                  active ? "bg-[#0d2c54] text-white shadow" : "bg-slate-50 text-slate-600 hover:bg-slate-100",
-                ].join(" ")}
-              >
-                {item.label}
-              </button>
-            );
-          })}
+          <h1 style={{ margin: "14px 0 0", fontSize: 32, fontWeight: 900, color: "#0f172a" }}>
+            {tr("Branch Office Portal")}
+          </h1>
+          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
+            {tr("Integrated branch workspace that covers pickup intake, delivery execution, dispatch control, rider supervision, finance visibility, tariff readiness, and audit awareness from one portal.")}
+          </p>
         </div>
 
-        <button className="inline-flex items-center gap-2 rounded-2xl bg-[#0d2c54] px-5 py-3 text-sm font-black text-white">
+        <button
+          type="button"
+          onClick={() => void loadPortal()}
+          style={{
+            ...secondaryBtn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
           <RefreshCw size={16} />
-          {bi(language, "Refresh Branch Data", "ရုံးခွဲဒေတာ ပြန်ရယူမည်")}
+          {tr("Refresh")}
         </button>
-      </div>
+      </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard icon={Package2} label={bi(language, "Queued Shipments", "စောင့်ဆိုင်းနေသော shipment များ")} value="126" caption={bi(language, "Waiting for dispatch or branch action", "Dispatch သို့မဟုတ် branch action စောင့်နေသည်")} />
-        <KpiCard icon={Truck} label={bi(language, "Live Riders", "လက်ရှိ rider များ")} value="18" caption={bi(language, "Active delivery assignments", "လက်ရှိ delivery assignment များ")} />
-        <KpiCard icon={WalletCards} label={bi(language, "COD Pending", "စောင့်ဆိုင်းနေသော COD")} value="3,630,000 MMK" caption={bi(language, "Uncleared branch COD batches", "မရှင်းလင်းရသေးသော COD batch များ")} />
-        <KpiCard icon={AlertTriangle} label={bi(language, "Escalations", "တင်ပြထားသော ပြဿနာများ")} value="7" caption={bi(language, "Require supervisor or HQ review", "Supervisor သို့မဟုတ် HQ review လိုအပ်သည်")} />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Surface>
-          <SectionTitle eyebrow={bi(language, "Dispatch Queue", "Dispatch Queue")} title={bi(language, "Branch shipment queue", "ရုံးခွဲ shipment queue")} subtitle={bi(language, "Search and review the current branch-level dispatch and warehouse queue.", "လက်ရှိ branch-level dispatch နှင့် warehouse queue ကို ရှာဖွေကြည့်ရှုနိုင်သည်။")} />
-          <div className="relative mb-5">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={bi(language, "Search AWB, customer, township, status", "AWB၊ customer၊ township၊ status ဖြင့်ရှာရန်")}
-              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-700 outline-none"
-            />
-          </div>
-
-          <div className="overflow-hidden rounded-[24px] border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {[bi(language, "AWB", "AWB"), bi(language, "Customer", "ဖောက်သည်"), bi(language, "Township", "မြို့နယ်"), bi(language, "Status", "အခြေအနေ"), bi(language, "Assignee", "တာဝန်ခံ")].map((header) => (
-                      <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredQueue.map((row) => (
-                    <tr key={row.id} className="border-t border-slate-100">
-                      <td className="px-4 py-3 font-bold text-slate-900">{row.awb}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.customer}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.township}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${badgeClass(row.status)}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{row.assignee}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </Surface>
-
-        <div className="space-y-6">
-          <Surface>
-            <SectionTitle eyebrow={bi(language, "COD Batches", "COD Batches")} title={bi(language, "Branch settlement follow-up", "ရုံးခွဲ COD settlement follow-up")} subtitle={bi(language, "Monitor branch cash batches and pending settlement states.", "ရုံးခွဲ cash batch များနှင့် စာရင်းရှင်းလင်းမှုအခြေအနေကို စောင့်ကြည့်နိုင်သည်။")} />
-            <div className="space-y-3">
-              {cashRows.map((row) => (
-                <div key={row.batch} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-black text-slate-900">{row.batch}</div>
-                      <div className="mt-1 text-sm text-slate-500">{row.updated}</div>
-                    </div>
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${badgeClass(row.state)}`}>
-                      {row.state}
-                    </span>
-                  </div>
-                  <div className="mt-3 text-lg font-black text-[#0d2c54]">{row.amount}</div>
-                </div>
-              ))}
-            </div>
-          </Surface>
-
-          <Surface>
-            <SectionTitle eyebrow={bi(language, "Branch Actions", "Branch Actions")} title={bi(language, "Operational shortcuts", "လုပ်ငန်းဆိုင်ရာ shortcut များ")} subtitle={bi(language, "Quick branch tools for queue review, handoff, and exception handling.", "Queue review, handoff နှင့် exception handling အတွက် ရုံးခွဲ shortcut များ။")} />
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                [CalendarClock, bi(language, "Pickup Queue", "Pickup Queue")],
-                [MapPin, bi(language, "Delivery Zone Board", "Delivery Zone Board")],
-                [Clock3, bi(language, "Pending Exceptions", "စောင့်ဆိုင်းနေသော exception များ")],
-                [ShieldCheck, bi(language, "Supervisor Escalation", "Supervisor escalation")],
-              ].map(([Icon, label]) => (
-                <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm">
-                      {React.createElement(Icon as React.ComponentType<{ size?: number }>, { size: 16 })}
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">{label as string}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Surface>
+      {message ? (
+        <div
+          style={{
+            border: "1px solid #a5f3fc",
+            background: "#ecfeff",
+            color: "#0f766e",
+            padding: "12px 14px",
+            borderRadius: 16,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          {message}
         </div>
+      ) : null}
+
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+        <KpiCard icon={<Package size={18} />} label={tr("Open Ways")} value={String(stats.openWays)} tone="info" />
+        <KpiCard icon={<Truck size={18} />} label={tr("Active Batches")} value={String(stats.activeBatches)} tone="good" />
+        <KpiCard icon={<Users size={18} />} label={tr("Active Drivers")} value={String(stats.activeDrivers)} />
+        <KpiCard icon={<DollarSign size={18} />} label={tr("COD Open")} value={`${money(stats.codOpen)} MMK`} tone="warn" />
+        <KpiCard icon={<ClipboardList size={18} />} label={tr("Delivered")} value={String(stats.delivered)} tone="good" />
+        <KpiCard icon={<ShieldCheck size={18} />} label={tr("Open Exceptions")} value={String(stats.exceptionCount)} tone="warn" />
+        <KpiCard icon={<Warehouse size={18} />} label={tr("Pickups Today")} value={String(stats.pickupsToday)} />
+        <KpiCard icon={<Map size={18} />} label={tr("Tariff Rows")} value={String(stats.tariffCount)} tone="info" />
+      </section>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 18 }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <Panel title={tr("Branch Command Snapshot")}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              <DetailMetric label={tr("Active Dispatch Batches")} value={safe(commandKpis.active_dispatch_batches, "0")} />
+              <DetailMetric label={tr("Closeout Pending")} value={safe(commandKpis.closeout_pending_batches, "0")} />
+              <DetailMetric label={tr("Finance Exceptions")} value={safe(commandKpis.finance_exceptions_open, "0")} />
+              <DetailMetric label={tr("Handovers Today")} value={safe(commandKpis.rider_handovers_today, "0")} />
+              <DetailMetric label={tr("Audit Events Today")} value={String(stats.auditToday)} />
+              <DetailMetric label={tr("Tariff Coverage")} value={String(stats.tariffCount)} />
+            </div>
+          </Panel>
+
+          <Panel title={tr("Dispatch Control Feed")}>
+            {topBatches.length ? (
+              topBatches.map((row: AnyRow) => (
+                <RowCard
+                  key={safe(row.dispatch_batch_id)}
+                  title={safe(row.dispatch_batch_id)}
+                  badge={statusText("en", row.status)}
+                  line1={`${safe(row.dispatch_date)} · ${safe(row.rider_name)} · ${safe(row.township)}`}
+                  line2={`${tr("Hub")}: ${safe(row.hub_code)} · ${tr("Ways")}: ${safe(row.total_ways)}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading branch office portal...") : tr("No dispatch batches found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Rider Supervision Summary")}>
+            {riderSummary.length ? (
+              riderSummary.map((row: AnyRow) => (
+                <RowCard
+                  key={safe(row.rider_name)}
+                  title={safe(row.rider_name)}
+                  line1={`${tr("Assigned")}: ${safe(row.assigned_ways)} · ${tr("OFD")}: ${safe(row.out_for_delivery)}`}
+                  line2={`${tr("Failed")}: ${safe(row.failed_attempts)} · ${tr("COD Open")}: ${money(row.cod_open)} MMK`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading branch office portal...") : tr("No rider summary found.")}
+              </div>
+            )}
+          </Panel>
+        </section>
+
+        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <Panel title={tr("Exception Watchlist")}>
+            {topExceptions.length ? (
+              topExceptions.map((row: AnyRow) => (
+                <RowCard
+                  key={safe(row.delivery_id)}
+                  title={safe(row.delivery_id)}
+                  badge={statusText("en", row.delivery_status)}
+                  line1={`${safe(row.receiver_name)} · ${safe(row.receiver_township || row.township)}`}
+                  line2={`${tr("Rider")}: ${safe(row.rider_name)} · ${tr("Pickup ID")}: ${safe(row.pickup_id)}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading branch office portal...") : tr("No exception rows found.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Branch Audit Feed")}>
+            {branchAuditFeed.length ? (
+              branchAuditFeed.map((row: AnyRow) => (
+                <RowCard
+                  key={safe(row.id)}
+                  title={safe(row.action)}
+                  badge={safe(row.target_status, "")}
+                  line1={`${safe(row.actor_name)} · ${safe(row.actor_role)}`}
+                  line2={`${safe(row.resource_type)} · ${safe(row.resource_id)} · ${safe(row.occurred_at)}`}
+                />
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
+                {loading ? tr("Loading branch office portal...") : tr("No audit feed available.")}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title={tr("Branch Quick Actions")}>
+            <ActionLink to="/pickup-registration" label={tr("Open Pickup Registration")} />
+            <ActionLink to="/delivery-registration" label={tr("Open Delivery Registration")} />
+            <ActionLink to="/way-management" label={tr("Open Way Management")} />
+            <ActionLink to="/delivery-workflow" label={tr("Open Delivery Workflow")} />
+            <ActionLink to="/delivery-dispatch" label={tr("Open Delivery Dispatch")} />
+            <ActionLink to="/delivery-exceptions" label={tr("Open Delivery Exceptions")} />
+            <ActionLink to="/rider-portal" label={tr("Open Rider Portal")} />
+            <ActionLink to="/finance-reconciliation" label={tr("Open Finance Reconciliation")} />
+            <ActionLink to="/finance-export-pack" label={tr("Open Finance Export")} />
+            <ActionLink to="/audit-logs" label={tr("Open Audit Logs")} />
+            <ActionLink to="/master/tariffs" label={tr("Open Tariff Master")} />
+            <ActionLink to="/operations-command-center" label={tr("Open Operations Command")} />
+          </Panel>
+        </section>
       </div>
     </div>
   );

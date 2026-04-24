@@ -29,6 +29,7 @@ import RiderSettlementReport from "./pages/RiderSettlementReport";
 import OperationsCommandCenter from "./pages/OperationsCommandCenter";
 import OperationsAdminPortal from "./pages/OperationsAdminPortal";
 import SuperAdminPortal from "./pages/SuperAdminPortal";
+import BranchOfficePortal from "./pages/BranchOfficePortal";
 import ExecutiveOperationsDashboard from "./pages/ExecutiveOperationsDashboard";
 import AuditLogViewer from "./pages/AuditLogViewer";
 import DataEntryOperationsDashboard from "./pages/DataEntryOperationsDashboard";
@@ -110,7 +111,7 @@ function PortalRoutes() {
           <Route path="/customer-service" element={<CustomerServicePortal />} />
           <Route path="/marketing" element={<MarketingPortal />} />
           <Route path="/customer" element={<CustomerPortal />} />
-          <Route path="/branch-office" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/branch-office" element={<BranchOfficePortal />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
