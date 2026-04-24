@@ -1,5 +1,7 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 export default function CreateDelivery() {
-  return <Navigate to="/delivery-registration" replace />;
+  const location = useLocation();
+  const qs = location.search || "";
+  return <Navigate to={`/delivery-registration${qs}`} replace />;
 }
