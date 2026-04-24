@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../../_lib/serverSupabase.ts";
+import { supabaseAdmin } from "../../_lib/serverSupabase";
 import { writeAuditLog } from "../../_lib/auditLog";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
