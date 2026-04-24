@@ -172,24 +172,25 @@ export default function Sidebar({
   });
 
   return (
-    <aside className="flex h-full flex-col bg-card">
+<aside className="flex h-full flex-col bg-card">
       <div className="flex h-16 items-center border-b border-border px-4">
         <Link
           to="/dashboard"
           onClick={onNavigate}
           className="flex items-center gap-3 overflow-hidden"
         >
-          <img
-            src="/images/logo.png"
-            alt="Britium Express"
-            className="h-9 w-auto shrink-0"
-          />
+          {/* Text-based Logo Icon for collapsed state */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg shadow-sm">
+            BX
+          </div>
+          
+          {/* Full Text for expanded state */}
           {showText && (
-            <div className="min-w-0">
-              <div className="truncate text-xs font-bold uppercase tracking-[0.22em] text-primary">
-                Britium Express
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="truncate text-sm font-bold tracking-[0.1em] text-foreground">
+                BRITIUM EXPRESS
               </div>
-              <div className="truncate text-sm font-semibold text-foreground">
+              <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Logistics Portal
               </div>
             </div>
