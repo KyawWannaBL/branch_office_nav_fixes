@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "./serverSupabase";
+import { supabaseAdmin } from "./serverSupabase.js";
 
 export type PaymentStatus = "PAID" | "UNPAID";
 

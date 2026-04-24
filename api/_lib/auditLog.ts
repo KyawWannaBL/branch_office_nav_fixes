@@ -1,6 +1,6 @@
 import type { VercelRequest } from "@vercel/node";
 import { randomUUID } from "crypto";
-import { supabaseAdmin } from "./serverSupabase";
+import { supabaseAdmin } from "./serverSupabase.js";
 
 type AuditInput = {
   req: VercelRequest;

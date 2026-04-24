@@ -8,9 +8,9 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User | null>;
   logout: () => Promise<void>;
-  signup: (email: string, password: string, fullName: string, role?: EmployeeRole) => Promise<void>;
+  signup: (email: string, password: string, fullName: string, role?: EmployeeRole) => Promise<User | null>;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: EmployeeRole | EmployeeRole[]) => boolean;
   canAccessPortal: (portal: RoutePath) => boolean;
@@ -23,6 +23,7 @@ const ROLE_PORTAL_ACCESS: Record<EmployeeRole, RoutePath[]> = {
     ROUTE_PATHS.DASHBOARD,
     ROUTE_PATHS.SUPERVISOR,
     ROUTE_PATHS.DRIVER,
+    ROUTE_PATHS.RIDER,
     ROUTE_PATHS.WAREHOUSE,
     ROUTE_PATHS.CUSTOMER_SERVICE,
     ROUTE_PATHS.CREATE_DELIVERY,
@@ -41,6 +42,7 @@ const ROLE_PORTAL_ACCESS: Record<EmployeeRole, RoutePath[]> = {
     ROUTE_PATHS.DASHBOARD,
     ROUTE_PATHS.SUPERVISOR,
     ROUTE_PATHS.DRIVER,
+    ROUTE_PATHS.RIDER,
     ROUTE_PATHS.WAREHOUSE,
     ROUTE_PATHS.CUSTOMER_SERVICE,
     ROUTE_PATHS.CREATE_DELIVERY,
@@ -55,6 +57,7 @@ const ROLE_PORTAL_ACCESS: Record<EmployeeRole, RoutePath[]> = {
     ROUTE_PATHS.DASHBOARD,
     ROUTE_PATHS.SUPERVISOR,
     ROUTE_PATHS.DRIVER,
+    ROUTE_PATHS.RIDER,
     ROUTE_PATHS.WAREHOUSE,
     ROUTE_PATHS.CUSTOMER_SERVICE,
     ROUTE_PATHS.CREATE_DELIVERY,
@@ -85,7 +88,7 @@ const ROLE_PORTAL_ACCESS: Record<EmployeeRole, RoutePath[]> = {
     ROUTE_PATHS.SETTINGS,
   ],
   'rider': [
-    ROUTE_PATHS.DRIVER,
+    ROUTE_PATHS.RIDER,
     ROUTE_PATHS.QR_CODE,
     ROUTE_PATHS.SETTINGS,
   ],
@@ -133,6 +136,39 @@ const ROLE_PORTAL_ACCESS: Record<EmployeeRole, RoutePath[]> = {
   ],
 };
 
+export function getDefaultRouteForRole(role?: EmployeeRole | null): RoutePath {
+  switch (role) {
+    case 'rider':
+      return ROUTE_PATHS.RIDER;
+    case 'driver':
+      return ROUTE_PATHS.DRIVER;
+    case 'warehouse-staff':
+      return ROUTE_PATHS.WAREHOUSE;
+    case 'customer-service':
+      return ROUTE_PATHS.CUSTOMER_SERVICE;
+    case 'data-entry':
+      return ROUTE_PATHS.DATA_ENTRY;
+    case 'wayplan-manager':
+      return ROUTE_PATHS.WAYPLAN;
+    case 'branch-office':
+      return ROUTE_PATHS.BRANCH_OFFICE;
+    case 'marketing':
+      return ROUTE_PATHS.MARKETING;
+    case 'hr-admin':
+      return ROUTE_PATHS.HR;
+    case 'finance':
+      return ROUTE_PATHS.FINANCE;
+    case 'merchant':
+      return ROUTE_PATHS.MERCHANT;
+    case 'customer':
+      return ROUTE_PATHS.CUSTOMER;
+    case 'supervisor':
+      return ROUTE_PATHS.SUPERVISOR;
+    default:
+      return ROUTE_PATHS.DASHBOARD;
+  }
+}
+
 const ROLE_PERMISSIONS: Record<EmployeeRole, string[]> = {
   'super-admin': ['view:all', 'create:all', 'update:all', 'delete:all', 'manage:users', 'manage:settings'],
   'admin': ['view:dashboard', 'view:deliveries', 'create:deliveries', 'update:deliveries', 'view:analytics', 'manage:warehouse'],
@@ -155,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadUserProfile = useCallback(async (supabaseUser: SupabaseUser) => {
+  const loadUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<User | null> => {
     try {
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -192,10 +228,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from('user_profiles')
           .update({ last_login: new Date().toISOString() })
           .eq('id', supabaseUser.id);
+
+        return appUser;
       }
+
+      return null;
     } catch (error) {
       console.error('Error loading user profile:', error);
       setUser(null);
+      return null;
     }
   }, []);
 
@@ -223,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [loadUserProfile]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User | null> => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -233,15 +274,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       if (data.user) {
-        await loadUserProfile(data.user);
+        return await loadUserProfile(data.user);
       }
+
+      return null;
     } catch (error: any) {
       console.error('Login error:', error);
       throw new Error(error.message || 'Failed to login');
     }
   };
 
-  const signup = async (email: string, password: string, fullName: string, role: EmployeeRole = 'customer') => {
+  const signup = async (email: string, password: string, fullName: string, role: EmployeeRole = 'customer'): Promise<User | null> => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -257,8 +300,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       if (data.user) {
-        await loadUserProfile(data.user);
+        return await loadUserProfile(data.user);
       }
+
+      return null;
     } catch (error: any) {
       console.error('Signup error:', error);
       throw new Error(error.message || 'Failed to sign up');

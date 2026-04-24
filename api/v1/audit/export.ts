@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { supabaseAdmin } from '../../_lib/serverSupabase.js';
 
 function esc(v: unknown) {
   const s = String(v ?? "");

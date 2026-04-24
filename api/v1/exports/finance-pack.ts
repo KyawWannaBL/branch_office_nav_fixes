@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../../_lib/serverSupabase";
-import { writeAuditLog } from "../../_lib/auditLog";
+import { supabaseAdmin } from '../../_lib/serverSupabase.js';
+import { writeAuditLog } from '../../_lib/auditLog.js';
 
 function esc(v: unknown) {
   const s = String(v ?? "");

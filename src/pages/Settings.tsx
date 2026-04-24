@@ -1,812 +1,836 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Calculator,
-  CheckCircle2,
-  Globe2,
-  Map,
-  MapPin,
-  Network,
-  PlusCircle,
-  Save,
-  Search,
-  Settings as SettingsIcon,
-  ShieldCheck,
-} from "lucide-react";
-import { supabase } from "@/lib/supabase/client";
+import { useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { User, Bell, Globe, Moon, Sun, Key, Shield, Copy, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { springPresets, fadeInUp } from '@/lib/motion';
+import type { EmployeeRole } from '@/lib/index';
+import { IMAGES } from '@/assets/images';
 
-type Language = "en" | "my" | "both";
-type SettingsTab =
-  | "system"
-  | "routePoints"
-  | "towns"
-  | "terms"
-  | "tariff"
-  | "network"
-  | "geo"
-  | "auth";
-
-type SystemField = {
-  key: string;
-  labelEn: string;
-  labelMy: string;
-  value: string;
-  hintEn: string;
-  hintMy: string;
+const ROLE_LABELS: Record<EmployeeRole, string> = {
+  'super-admin': 'Super Administrator',
+  'admin': 'Administrator',
+  'branch-office': 'Branch Office',
+  'supervisor': 'Supervisor',
+  'wayplan-manager': 'Wayplan Manager',
+  'driver': 'Driver',
+  'rider': 'Rider',
+  'warehouse-staff': 'Warehouse Staff',
+  'customer-service': 'Customer Service',
+  'data-entry': 'Data Entry',
+  'marketing': 'Marketing',
+  'hr-admin': 'HR Administrator',
+  'finance': 'Finance',
+  'merchant': 'Merchant',
+  'customer': 'Customer',
 };
 
-type SystemToggle = {
-  key: string;
-  labelEn: string;
-  labelMy: string;
-  enabled: boolean;
-  hintEn: string;
-  hintMy: string;
+const PORTAL_ACCESS_LABELS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/supervisor': 'Supervisor Portal',
+  '/driver': 'Driver Portal',
+  '/warehouse': 'Warehouse Portal',
+  '/customer-service': 'Customer Service',
+  '/create-delivery': 'Create Delivery',
+  '/analytics': 'Analytics',
+  '/settings': 'Settings',
 };
-
-type RoutePointRow = {
-  name: string;
-  address: string;
-  updated: string;
-  type: "highway" | "postOffice" | "poi";
-};
-
-type TariffRow = {
-  name: string;
-  base: number;
-  updated: string;
-  plan: string;
-  active: boolean;
-};
-
-type NetworkRow = {
-  code: string;
-  location: string;
-  entity: string;
-  revenue: string;
-  status: "active" | "inactive";
-};
-
-type TownRow = {
-  town: string;
-  state: string;
-};
-
-type LocalAccount = {
-  name: string;
-  email: string;
-  role: string;
-  status: "ACTIVE" | "PENDING" | "SUSPENDED";
-};
-
-function bi(language: Language, en: string, my: string) {
-  if (language === "en") return en;
-  if (language === "my") return my;
-  return `${en} / ${my}`;
-}
-
-function Panel({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-[32px] border border-black/10 bg-white/55 p-6 shadow-sm backdrop-blur-md">
-      <h2 className="text-lg font-black text-slate-950">{title}</h2>
-      {subtitle ? <p className="mt-1 text-sm text-slate-700">{subtitle}</p> : null}
-      <div className="mt-4">{children}</div>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? "inline-flex items-center gap-2 rounded-2xl bg-[#0d2c54] px-5 py-4 text-xs font-black uppercase tracking-widest text-white"
-          : "inline-flex items-center gap-2 rounded-2xl border border-black/10 bg-white/70 px-5 py-4 text-xs font-black uppercase tracking-widest text-slate-700 hover:bg-white/90"
-      }
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-function LanguageToggle({
-  value,
-  onChange,
-}: {
-  value: Language;
-  onChange: (value: Language) => void;
-}) {
-  const items: Array<{ value: Language; label: string }> = [
-    { value: "en", label: "EN" },
-    { value: "my", label: "မြန်မာ" },
-    { value: "both", label: "EN + မြန်မာ" },
-  ];
-
-  return (
-    <div className="inline-flex flex-wrap items-center gap-2 rounded-2xl border border-black/10 bg-white/70 p-2 shadow-sm backdrop-blur-md">
-      <div className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700">
-        <Globe2 size={14} />
-        <span>Language</span>
-      </div>
-      {items.map((item) => {
-        const active = item.value === value;
-        return (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => onChange(item.value)}
-            className={
-              active
-                ? "rounded-xl bg-[#0d2c54] px-3 py-2 text-sm font-semibold text-white shadow"
-                : "rounded-xl bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white"
-            }
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-const ROUTE_POINTS: RoutePointRow[] = [
-  {
-    name: "Dagon Ayar Highway Terminal",
-    address: "Yangon-Pathein Street, Yangon",
-    updated: "2026-04-10",
-    type: "highway",
-  },
-  {
-    name: "Aung Mingalar Highway Terminal",
-    address: "Mingaladon, Yangon",
-    updated: "2026-04-10",
-    type: "highway",
-  },
-  {
-    name: "Yangon Post Office",
-    address: "Botahtaung, Yangon",
-    updated: "2026-04-09",
-    type: "postOffice",
-  },
-  {
-    name: "Britium Kamayut Counter",
-    address: "Kamayut Township, Yangon",
-    updated: "2026-04-08",
-    type: "poi",
-  },
-];
-
-const TARIFF_ROWS: TariffRow[] = [
-  { name: "Yangon → Mandalay", base: 5000, updated: "2026-04-09", plan: "Regular", active: true },
-  { name: "Yangon → Naypyitaw", base: 5000, updated: "2026-04-09", plan: "Regular", active: true },
-  { name: "Yangon → Highway Gate", base: 3000, updated: "2026-04-09", plan: "Regular", active: true },
-];
-
-const NETWORK_ROWS: NetworkRow[] = [
-  {
-    code: "BEX-YGN-HQ",
-    location: "Kamayut, Yangon",
-    entity: "Britium Branch",
-    revenue: "100% Owned",
-    status: "active",
-  },
-  {
-    code: "BEX-AHL-01",
-    location: "Ahlone Branch",
-    entity: "Branch Office",
-    revenue: "Branch Allocation",
-    status: "active",
-  },
-  {
-    code: "3PL-TGI-01",
-    location: "Taunggyi, Shan State",
-    entity: "Partner Node",
-    revenue: "80 / 20 Split",
-    status: "active",
-  },
-];
-
-const TOWN_ROWS: TownRow[] = [
-  { town: "Kamayut", state: "Yangon Region" },
-  { town: "Ahlone", state: "Yangon Region" },
-  { town: "Lanmadaw", state: "Yangon Region" },
-  { town: "Sanchaung", state: "Yangon Region" },
-  { town: "Chanmyathazi", state: "Mandalay Region" },
-  { town: "Mahaaungmyay", state: "Mandalay Region" },
-];
-
-const DEFAULT_SYSTEM_FIELDS: SystemField[] = [
-  {
-    key: "wayIdTrailingLength",
-    labelEn: "Way ID trailing length",
-    labelMy: "Way ID နောက်ဆုံးစာလုံးအရှည်",
-    value: "6",
-    hintEn: "Minimum random digits appended to generated way IDs.",
-    hintMy: "Way ID များနောက်တွင် ထည့်မည့် random digit အရေအတွက်။",
-  },
-  {
-    key: "promotionCodeLength",
-    labelEn: "Promotion code length",
-    labelMy: "Promotion code အရှည်",
-    value: "6",
-    hintEn: "Random code length for promotions.",
-    hintMy: "Promotion code အတွက် random code အရှည်။",
-  },
-  {
-    key: "lastPickupHour",
-    labelEn: "Last pickup hour",
-    labelMy: "နောက်ဆုံး pickup အချိန်",
-    value: "15",
-    hintEn: "Orders before this hour are eligible for same-day pickup.",
-    hintMy: "ဤအချိန်မတိုင်မီရသော order များကို same-day pickup လုပ်မည်။",
-  },
-  {
-    key: "supportPhone",
-    labelEn: "Support phone",
-    labelMy: "Support ဖုန်းနံပါတ်",
-    value: "09 400 500 542",
-    hintEn: "Visible to merchants and customers.",
-    hintMy: "Merchant နှင့် customer များသို့ ပြသမည့်နံပါတ်။",
-  },
-];
-
-const DEFAULT_SYSTEM_TOGGLES: SystemToggle[] = [
-  {
-    key: "autoAssignPickupDeliver",
-    labelEn: "Auto assign pickup / delivery",
-    labelMy: "Pickup / delivery auto assign",
-    enabled: false,
-    hintEn: "Assign deliveryman automatically using rotation rules.",
-    hintMy: "Rotation rule အလိုက် deliveryman ကို auto assign လုပ်မည်။",
-  },
-  {
-    key: "autoCreateCustomerAccount",
-    labelEn: "Auto create customer account",
-    labelMy: "Customer account auto create",
-    enabled: true,
-    hintEn: "Create customer profile automatically when shipment is added.",
-    hintMy: "Shipment ထည့်သွင်းချိန်တွင် customer profile ကို auto create လုပ်မည်။",
-  },
-  {
-    key: "saveRecipientAddressBook",
-    labelEn: "Save recipient to address book",
-    labelMy: "Recipient ကို address book ထဲသိမ်းမည်",
-    enabled: true,
-    hintEn: "Store receiver data for future use.",
-    hintMy: "နောက်တစ်ကြိမ်အသုံးပြုရန် receiver data သိမ်းမည်။",
-  },
-];
-
-const DEFAULT_ACCOUNTS: LocalAccount[] = [
-  { name: "Managing Director", email: "md@britiumexpress.com", role: "SYS", status: "ACTIVE" },
-  { name: "Operations Admin", email: "ops@britiumexpress.com", role: "ADMIN", status: "ACTIVE" },
-  { name: "Customer Service Lead", email: "cs@britiumexpress.com", role: "CUSTOMER_SERVICE", status: "ACTIVE" },
-  { name: "Warehouse Reviewer", email: "warehouse@britiumexpress.com", role: "DATA_ENTRY", status: "PENDING" },
-];
 
 export default function Settings() {
-  const [language, setLanguage] = useState<Language>("both");
-  const [activeTab, setActiveTab] = useState<SettingsTab>("system");
-  const [saved, setSaved] = useState(false);
-  const [actorEmail, setActorEmail] = useState("");
-  const [accountQuery, setAccountQuery] = useState("");
-  const [routeQuery, setRouteQuery] = useState("");
-  const [townQuery, setTownQuery] = useState("");
-  const [termsBody, setTermsBody] = useState(
-    "Terms and Conditions\n\n1. Parcels must comply with platform rules.\n2. Prohibited items are not accepted.\n3. Merchants are responsible for accurate customer details.",
+  const { user, logout, canAccessPortal } = useAuth();
+  const [activeTab, setActiveTab] = useState('profile');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+
+  const [profileData, setProfileData] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: '+95 9 123 456 789',
+    employeeNumber: 'EMP-2026-001',
+  });
+
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    email: user?.preferences.notifications.email ?? true,
+    push: user?.preferences.notifications.push ?? true,
+    sms: user?.preferences.notifications.sms ?? false,
+    deliveryUpdates: true,
+    taskAssignments: true,
+    systemAlerts: true,
+    weeklyReports: false,
+  });
+
+  const [language, setLanguage] = useState<'en' | 'mm'>(user?.preferences.language || 'en');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(user?.preferences.theme || 'auto');
+
+  const mockApiKey = 'brx_live_sk_1234567890abcdefghijklmnopqrstuvwxyz';
+
+  const handleSaveProfile = async () => {
+    setSaveStatus('saving');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const handleSaveNotifications = async () => {
+    setSaveStatus('saving');
+    await new Promise(resolve => setTimeout(resolve, 800));
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const handleSaveLanguage = async () => {
+    setSaveStatus('saving');
+    await new Promise(resolve => setTimeout(resolve, 600));
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const handleCopyApiKey = () => {
+    navigator.clipboard.writeText(mockApiKey);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  };
+
+  const handleGenerateNewKey = async () => {
+    setSaveStatus('saving');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const accessiblePortals = Object.entries(PORTAL_ACCESS_LABELS).filter(([path]) => 
+    canAccessPortal(path as any)
   );
 
-  const [systemFields, setSystemFields] = useState<SystemField[]>(DEFAULT_SYSTEM_FIELDS);
-  const [systemToggles, setSystemToggles] = useState<SystemToggle[]>(DEFAULT_SYSTEM_TOGGLES);
-  const [accounts, setAccounts] = useState<LocalAccount[]>(DEFAULT_ACCOUNTS);
-
-  const t = (en: string, my: string) => bi(language, en, my);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadActor() {
-      try {
-        const { data } = await supabase.auth.getUser();
-        if (!mounted) return;
-        const email = data.user?.email ?? "";
-        setActorEmail(email);
-
-        if (email) {
-          setAccounts((prev) => {
-            const exists = prev.some((item) => item.email.toLowerCase() === email.toLowerCase());
-            if (exists) return prev;
-            return [
-              {
-                name: email.split("@")[0] || "Signed In User",
-                email,
-                role: "ACTIVE_USER",
-                status: "ACTIVE",
-              },
-              ...prev,
-            ];
-          });
-        }
-      } catch {
-        if (!mounted) return;
-        setActorEmail("");
-      }
-    }
-
-    void loadActor();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  function handleSave() {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
-  }
-
-  function updateField(key: string, value: string) {
-    setSystemFields((prev) =>
-      prev.map((field) => (field.key === key ? { ...field, value } : field)),
-    );
-  }
-
-  function toggleSwitch(key: string) {
-    setSystemToggles((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, enabled: !item.enabled } : item)),
-    );
-  }
-
-  const filteredRoutePoints = useMemo(() => {
-    const q = routeQuery.trim().toLowerCase();
-    if (!q) return ROUTE_POINTS;
-    return ROUTE_POINTS.filter((row) =>
-      [row.name, row.address, row.type].join(" ").toLowerCase().includes(q),
-    );
-  }, [routeQuery]);
-
-  const filteredTowns = useMemo(() => {
-    const q = townQuery.trim().toLowerCase();
-    if (!q) return TOWN_ROWS;
-    return TOWN_ROWS.filter((row) =>
-      [row.town, row.state].join(" ").toLowerCase().includes(q),
-    );
-  }, [townQuery]);
-
-  const filteredAccounts = useMemo(() => {
-    const q = accountQuery.trim().toLowerCase();
-    if (!q) return accounts;
-    return accounts.filter((row) =>
-      [row.name, row.email, row.role, row.status].join(" ").toLowerCase().includes(q),
-    );
-  }, [accounts, accountQuery]);
-
   return (
-    <div className="min-h-screen p-6 md:p-8">
-      <div className="rounded-[36px] border border-black/10 bg-white/55 p-6 shadow-sm backdrop-blur-md">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-slate-500">
-              <SettingsIcon className="h-4 w-4" />
-              {t("System Configuration", "System Configuration")}
-            </div>
-            <h1 className="mt-2 text-4xl font-black text-slate-950">
-              {t("Settings & Authorization", "Settings နှင့် Authorization")}
-            </h1>
-            <p className="mt-3 max-w-4xl text-sm text-slate-700">
-              {t(
-                "Master controls for operations, pricing, routing, geography, content rules, and lightweight authorization visibility.",
-                "လုပ်ငန်းစဉ်များ၊ ဈေးနှုန်းများ၊ route points, geography, content rules နှင့် authorization visibility ကို စီမံရန် master settings page ဖြစ်သည်။",
-              )}
-            </p>
-            <p className="mt-2 text-xs font-semibold text-slate-500">
-              {t("Signed in as", "ဝင်ထားသောအကောင့်")}: {actorEmail || "guest"}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <LanguageToggle value={language} onChange={setLanguage} />
-            <button
-              type="button"
-              onClick={handleSave}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#ffd700] px-6 py-3 font-black uppercase tracking-widest text-[#0d2c54] shadow-lg"
-            >
-              {saved ? <CheckCircle2 size={18} /> : <Save size={18} />}
-              {saved ? t("Saved", "သိမ်းပြီး") : t("Commit Changes", "ပြောင်းလဲမှုများ သိမ်းမည်")}
-            </button>
-          </div>
+    <div className="min-h-screen bg-background relative">
+      <div
+        className="absolute inset-0 z-0 opacity-30"
+        style={{
+          backgroundImage: `url(${IMAGES.SCREENSHOT_6534_2})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background/70" />
+      
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={springPresets.gentle}
+        className="relative z-10 container mx-auto px-4 py-8 max-w-6xl"
+      >
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold tracking-tight mb-2">Settings</h1>
+          <p className="text-muted-foreground text-lg">
+            Manage your account preferences and system configuration
+          </p>
         </div>
 
-        {saved ? (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-            {t("Configuration saved locally for this UI session.", "ဒီ UI session အတွက် settings များကို locally သိမ်းပြီးပါပြီ။")}
-          </div>
-        ) : null}
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <TabButton active={activeTab === "system"} onClick={() => setActiveTab("system")} icon={<SettingsIcon size={16} />}>
-            {t("System", "System")}
-          </TabButton>
-          <TabButton active={activeTab === "routePoints"} onClick={() => setActiveTab("routePoints")} icon={<MapPin size={16} />}>
-            {t("Route Points", "Route Points")}
-          </TabButton>
-          <TabButton active={activeTab === "towns"} onClick={() => setActiveTab("towns")} icon={<Map size={16} />}>
-            {t("Towns", "Towns")}
-          </TabButton>
-          <TabButton active={activeTab === "terms"} onClick={() => setActiveTab("terms")} icon={<Save size={16} />}>
-            {t("Terms", "Terms")}
-          </TabButton>
-          <TabButton active={activeTab === "tariff"} onClick={() => setActiveTab("tariff")} icon={<Calculator size={16} />}>
-            {t("Tariff", "Tariff")}
-          </TabButton>
-          <TabButton active={activeTab === "network"} onClick={() => setActiveTab("network")} icon={<Network size={16} />}>
-            {t("Network", "Network")}
-          </TabButton>
-          <TabButton active={activeTab === "geo"} onClick={() => setActiveTab("geo")} icon={<Map size={16} />}>
-            {t("Geography", "Geography")}
-          </TabButton>
-          <TabButton active={activeTab === "auth"} onClick={() => setActiveTab("auth")} icon={<ShieldCheck size={16} />}>
-            {t("Authorization", "Authorization")}
-          </TabButton>
-        </div>
-      </div>
-
-      {activeTab === "system" && (
-        <div className="mt-6">
-          <Panel
-            title={t("System Settings", "System Settings")}
-            subtitle={t(
-              "Core platform values and operational switches.",
-              "Platform core values နှင့် operational switches များ။",
-            )}
+        {saveStatus === 'saved' && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-6"
           >
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-4">
-                {systemFields.map((field) => (
-                  <div key={field.key} className="space-y-1">
-                    <label className="text-[11px] font-black text-slate-600">
-                      {bi(language, field.labelEn, field.labelMy)}
-                    </label>
-                    <input
-                      value={field.value}
-                      onChange={(e) => updateField(field.key, e.target.value)}
-                      className="h-11 w-full rounded-xl border border-black/10 bg-white/80 px-4 text-sm text-slate-900 outline-none"
-                    />
-                    <p className="text-[11px] text-slate-500">
-                      {bi(language, field.hintEn, field.hintMy)}
-                    </p>
-                  </div>
-                ))}
-              </div>
+            <Alert className="bg-chart-3/10 border-chart-3">
+              <CheckCircle2 className="h-4 w-4 text-chart-3" />
+              <AlertDescription className="text-chart-3">
+                Settings saved successfully
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
 
-              <div className="space-y-4">
-                {systemToggles.map((item) => (
-                  <div key={item.key} className="rounded-2xl border border-black/10 bg-white/70 p-4">
-                    <div className="flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleSwitch(item.key)}
-                        className={`mt-1 inline-flex h-6 w-11 items-center rounded-full transition ${
-                          item.enabled ? "bg-[#0d2c54]" : "bg-slate-300"
-                        }`}
-                      >
-                        <span
-                          className={`h-5 w-5 rounded-full bg-white shadow transition ${
-                            item.enabled ? "translate-x-5" : "translate-x-0.5"
-                          }`}
-                        />
-                      </button>
-                      <div>
-                        <div className="text-sm font-bold text-slate-900">
-                          {bi(language, item.labelEn, item.labelMy)}
-                        </div>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          {bi(language, item.hintEn, item.hintMy)}
+        {saveStatus === 'error' && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-6"
+          >
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Failed to save settings. Please try again.
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-2">
+            <TabsTrigger value="profile" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Profile</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              <span className="hidden sm:inline">Notifications</span>
+            </TabsTrigger>
+            <TabsTrigger value="language" className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              <span className="hidden sm:inline">Language</span>
+            </TabsTrigger>
+            <TabsTrigger value="theme" className="flex items-center gap-2">
+              <Moon className="h-4 w-4" />
+              <span className="hidden sm:inline">Theme</span>
+            </TabsTrigger>
+            <TabsTrigger value="permissions" className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Permissions</span>
+            </TabsTrigger>
+            <TabsTrigger value="api" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              <span className="hidden sm:inline">API Keys</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profile Information</CardTitle>
+                  <CardDescription>
+                    Update your personal information and contact details
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input
+                        id="name"
+                        value={profileData.name}
+                        onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                        placeholder="Enter your full name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={profileData.email}
+                        onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                        placeholder="your.email@britium.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={profileData.phone}
+                        onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                        placeholder="+95 9 XXX XXX XXX"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="employeeNumber">Employee Number</Label>
+                      <Input
+                        id="employeeNumber"
+                        value={profileData.employeeNumber}
+                        disabled
+                        className="bg-muted"
+                      />
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Role</Label>
+                      <div className="mt-2">
+                        <Badge variant="secondary" className="text-sm">
+                          {user ? ROLE_LABELS[user.role] : 'Unknown'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Branch</Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {user?.branchId || 'Not assigned'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Last Login</Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {user?.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <Button variant="outline" onClick={() => setProfileData({
+                      name: user?.name || '',
+                      email: user?.email || '',
+                      phone: '+95 9 123 456 789',
+                      employeeNumber: 'EMP-2026-001',
+                    })}>
+                      Reset
+                    </Button>
+                    <Button onClick={handleSaveProfile} disabled={saveStatus === 'saving'}>
+                      {saveStatus === 'saving' ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="notifications" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notification Preferences</CardTitle>
+                  <CardDescription>
+                    Choose how you want to receive notifications
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="email-notif">Email Notifications</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Receive notifications via email
                         </p>
+                      </div>
+                      <Switch
+                        id="email-notif"
+                        checked={notificationPrefs.email}
+                        onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, email: checked })}
+                      />
+                    </div>
+
+                    <Separator />
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="push-notif">Push Notifications</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Receive push notifications in browser
+                        </p>
+                      </div>
+                      <Switch
+                        id="push-notif"
+                        checked={notificationPrefs.push}
+                        onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, push: checked })}
+                      />
+                    </div>
+
+                    <Separator />
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="sms-notif">SMS Notifications</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Receive notifications via SMS
+                        </p>
+                      </div>
+                      <Switch
+                        id="sms-notif"
+                        checked={notificationPrefs.sms}
+                        onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, sms: checked })}
+                      />
+                    </div>
+
+                    <Separator className="my-6" />
+
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-semibold">Notification Types</h4>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="delivery-updates">Delivery Updates</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Status changes and delivery confirmations
+                          </p>
+                        </div>
+                        <Switch
+                          id="delivery-updates"
+                          checked={notificationPrefs.deliveryUpdates}
+                          onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, deliveryUpdates: checked })}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="task-assignments">Task Assignments</Label>
+                          <p className="text-sm text-muted-foreground">
+                            New tasks and assignment updates
+                          </p>
+                        </div>
+                        <Switch
+                          id="task-assignments"
+                          checked={notificationPrefs.taskAssignments}
+                          onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, taskAssignments: checked })}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="system-alerts">System Alerts</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Important system notifications and alerts
+                          </p>
+                        </div>
+                        <Switch
+                          id="system-alerts"
+                          checked={notificationPrefs.systemAlerts}
+                          onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, systemAlerts: checked })}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="weekly-reports">Weekly Reports</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Performance summaries and analytics
+                          </p>
+                        </div>
+                        <Switch
+                          id="weekly-reports"
+                          checked={notificationPrefs.weeklyReports}
+                          onCheckedChange={(checked) => setNotificationPrefs({ ...notificationPrefs, weeklyReports: checked })}
+                        />
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </Panel>
-        </div>
-      )}
 
-      {activeTab === "routePoints" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Route Points", "Route Points")}
-            subtitle={t("Maintain highways, post offices, and points of interest.", "Highway, post office နှင့် POI များကို စီမံနိုင်သည်။")}
-          >
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <button className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#0d2c54] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">
-                <PlusCircle size={14} />
-                {t("Add New", "အသစ်ထည့်မည်")}
-              </button>
-              <div className="relative w-full md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={routeQuery}
-                  onChange={(e) => setRouteQuery(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-10 pr-4 text-sm outline-none"
-                  placeholder={t("Search route points", "Route points ရှာရန်")}
-                />
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-black/10">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/80 text-left text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3 font-black">Name</th>
-                    <th className="px-4 py-3 font-black">Address</th>
-                    <th className="px-4 py-3 font-black">Type</th>
-                    <th className="px-4 py-3 font-black">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRoutePoints.map((row) => (
-                    <tr key={`${row.type}-${row.name}`} className="border-t border-black/5 bg-white/50">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.address}</td>
-                      <td className="px-4 py-3 uppercase text-slate-600">{row.type}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.updated}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </div>
-      )}
-
-      {activeTab === "towns" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Town List", "Town List")}
-            subtitle={t("Operational towns and states.", "Operational town နှင့် state များ။")}
-          >
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <button className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#0d2c54] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">
-                <PlusCircle size={14} />
-                {t("Add New", "အသစ်ထည့်မည်")}
-              </button>
-              <div className="relative w-full md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={townQuery}
-                  onChange={(e) => setTownQuery(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-10 pr-4 text-sm outline-none"
-                  placeholder={t("Search towns", "Town ရှာရန်")}
-                />
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-black/10">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/80 text-left text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3 font-black">Town</th>
-                    <th className="px-4 py-3 font-black">State / Region</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTowns.map((row) => (
-                    <tr key={`${row.town}-${row.state}`} className="border-t border-black/5 bg-white/50">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{row.town}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.state}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </div>
-      )}
-
-      {activeTab === "terms" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Terms & Conditions", "Terms & Conditions")}
-            subtitle={t("Editable content block for business rules.", "လုပ်ငန်းဆိုင်ရာ စည်းမျဉ်းစာသားကို ပြင်ဆင်နိုင်သည်။")}
-          >
-            <textarea
-              value={termsBody}
-              onChange={(e) => setTermsBody(e.target.value)}
-              className="min-h-[360px] w-full rounded-2xl border border-black/10 bg-white/80 p-4 text-sm text-slate-800 outline-none"
-            />
-          </Panel>
-        </div>
-      )}
-
-      {activeTab === "tariff" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Tariff Matrix", "Tariff Matrix")}
-            subtitle={t("Base package pricing rows.", "အခြေခံ pricing rows များ။")}
-          >
-            <div className="overflow-hidden rounded-2xl border border-black/10">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/80 text-left text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3 font-black">Name</th>
-                    <th className="px-4 py-3 font-black">Base</th>
-                    <th className="px-4 py-3 font-black">Plan</th>
-                    <th className="px-4 py-3 font-black">Updated</th>
-                    <th className="px-4 py-3 font-black">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TARIFF_ROWS.map((row) => (
-                    <tr key={row.name} className="border-t border-black/5 bg-white/50">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.base.toLocaleString()} MMK</td>
-                      <td className="px-4 py-3 text-slate-700">{row.plan}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.updated}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase text-emerald-700">
-                          {row.active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </div>
-      )}
-
-      {activeTab === "network" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Network Expansion", "Network Expansion")}
-            subtitle={t("Branch and partner node configuration.", "Branch နှင့် partner node configuration။")}
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {NETWORK_ROWS.map((row) => (
-                <div key={row.code} className="rounded-[28px] border border-black/10 bg-white/70 p-5 shadow-sm">
-                  <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{row.code}</div>
-                  <div className="mt-2 text-lg font-black text-slate-950">{row.location}</div>
-                  <div className="mt-2 text-sm text-slate-700">{row.entity}</div>
-                  <div className="mt-1 text-sm text-slate-600">{row.revenue}</div>
-                  <div className="mt-4">
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase ${
-                        row.status === "active"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-200 text-slate-700"
-                      }`}
-                    >
-                      {row.status}
-                    </span>
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotifications} disabled={saveStatus === 'saving'}>
+                      {saveStatus === 'saving' ? 'Saving...' : 'Save Preferences'}
+                    </Button>
                   </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
-      )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
 
-      {activeTab === "geo" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Geography Master", "Geography Master")}
-            subtitle={t("Static operational geography summary.", "Operational geography summary။")}
-          >
-            <div className="rounded-[32px] border-2 border-dashed border-black/10 bg-white/50 p-12 text-center">
-              <Map className="mx-auto mb-4 h-16 w-16 text-slate-300" />
-              <h3 className="text-xl font-black text-slate-950">
-                {t("Myanmar Geospatial Database", "Myanmar Geospatial Database")}
-              </h3>
-              <p className="mt-2 text-sm text-slate-600">
-                {t(
-                  "Regions, towns, route points, and operational geography can be managed here.",
-                  "Regions, towns, route points နှင့် operational geography များကို ဒီနေရာတွင် စီမံနိုင်သည်။",
-                )}
-              </p>
-            </div>
-          </Panel>
-        </div>
-      )}
+          <TabsContent value="language" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Language Settings</CardTitle>
+                  <CardDescription>
+                    Choose your preferred language for the interface
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <Label htmlFor="language-select">Interface Language</Label>
+                    <Select value={language} onValueChange={(value: 'en' | 'mm') => setLanguage(value)}>
+                      <SelectTrigger id="language-select" className="w-full md:w-[300px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="mm">Myanmar (မြန်မာ)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-sm text-muted-foreground">
+                      Changes will take effect immediately across all portals
+                    </p>
+                  </div>
 
-      {activeTab === "auth" && (
-        <div className="mt-6">
-          <Panel
-            title={t("User Authorization", "User Authorization")}
-            subtitle={t(
-              "Safe local visibility panel for accounts. This version avoids the crashing accountControlStore dependency chain.",
-              "ဒီ version သည် page ကို crash ဖြစ်စေသော accountControlStore dependency ကို ရှောင်ထားသော safe local visibility panel ဖြစ်သည်။",
-            )}
-          >
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  {t(
-                    "This is a stable fallback authorization view so /settings opens again immediately.",
-                    "/settings ကို ချက်ချင်းပြန်ဖွင့်နိုင်ရန် stable fallback authorization view ဖြစ်သည်။",
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold">Regional Settings</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Date Format</Label>
+                        <Select defaultValue="dd/mm/yyyy">
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="dd/mm/yyyy">DD/MM/YYYY</SelectItem>
+                            <SelectItem value="mm/dd/yyyy">MM/DD/YYYY</SelectItem>
+                            <SelectItem value="yyyy-mm-dd">YYYY-MM-DD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Time Format</Label>
+                        <Select defaultValue="24h">
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="12h">12-hour (AM/PM)</SelectItem>
+                            <SelectItem value="24h">24-hour</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Timezone</Label>
+                        <Select defaultValue="asia/yangon">
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="asia/yangon">Asia/Yangon (GMT+6:30)</SelectItem>
+                            <SelectItem value="asia/bangkok">Asia/Bangkok (GMT+7)</SelectItem>
+                            <SelectItem value="asia/singapore">Asia/Singapore (GMT+8)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Currency</Label>
+                        <Select defaultValue="mmk">
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="mmk">MMK (Kyat)</SelectItem>
+                            <SelectItem value="usd">USD (Dollar)</SelectItem>
+                            <SelectItem value="thb">THB (Baht)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveLanguage} disabled={saveStatus === 'saving'}>
+                      {saveStatus === 'saving' ? 'Saving...' : 'Save Settings'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="theme" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Theme Settings</CardTitle>
+                  <CardDescription>
+                    Customize the appearance of your dashboard
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <Label>Color Theme</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={`relative flex flex-col items-center gap-3 p-6 rounded-lg border-2 transition-all hover:border-primary ${
+                          theme === 'light' ? 'border-primary bg-primary/5' : 'border-border'
+                        }`}
+                      >
+                        <Sun className="h-8 w-8" />
+                        <div className="text-center">
+                          <p className="font-semibold">Light</p>
+                          <p className="text-xs text-muted-foreground">Bright and clear</p>
+                        </div>
+                        {theme === 'light' && (
+                          <div className="absolute top-2 right-2">
+                            <CheckCircle2 className="h-5 w-5 text-primary" />
+                          </div>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={`relative flex flex-col items-center gap-3 p-6 rounded-lg border-2 transition-all hover:border-primary ${
+                          theme === 'dark' ? 'border-primary bg-primary/5' : 'border-border'
+                        }`}
+                      >
+                        <Moon className="h-8 w-8" />
+                        <div className="text-center">
+                          <p className="font-semibold">Dark</p>
+                          <p className="text-xs text-muted-foreground">Easy on the eyes</p>
+                        </div>
+                        {theme === 'dark' && (
+                          <div className="absolute top-2 right-2">
+                            <CheckCircle2 className="h-5 w-5 text-primary" />
+                          </div>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => setTheme('auto')}
+                        className={`relative flex flex-col items-center gap-3 p-6 rounded-lg border-2 transition-all hover:border-primary ${
+                          theme === 'auto' ? 'border-primary bg-primary/5' : 'border-border'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Sun className="h-6 w-6" />
+                          <Moon className="h-6 w-6" />
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold">Auto</p>
+                          <p className="text-xs text-muted-foreground">Follows system</p>
+                        </div>
+                        {theme === 'auto' && (
+                          <div className="absolute top-2 right-2">
+                            <CheckCircle2 className="h-5 w-5 text-primary" />
+                          </div>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold">Display Options</h4>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label>Compact Mode</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Reduce spacing for more content
+                        </p>
+                      </div>
+                      <Switch defaultChecked={false} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label>Animations</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Enable smooth transitions and effects
+                        </p>
+                      </div>
+                      <Switch defaultChecked={true} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label>High Contrast</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Increase contrast for better visibility
+                        </p>
+                      </div>
+                      <Switch defaultChecked={false} />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveLanguage} disabled={saveStatus === 'saving'}>
+                      {saveStatus === 'saving' ? 'Saving...' : 'Save Theme'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="permissions" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Portal Access Permissions</CardTitle>
+                  <CardDescription>
+                    View your role-based access to different portals
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Current Role</Label>
+                      <div className="mt-2">
+                        <Badge variant="secondary" className="text-base px-4 py-2">
+                          {user ? ROLE_LABELS[user.role] : 'Unknown'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Accessible Portals</Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {accessiblePortals.map(([path, label]) => (
+                          <div
+                            key={path}
+                            className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                          >
+                            <CheckCircle2 className="h-5 w-5 text-chart-3" />
+                            <span className="font-medium">{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Permissions</Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {user?.permissions.map((permission) => (
+                          <div
+                            key={permission}
+                            className="flex items-center gap-2 text-sm text-muted-foreground"
+                          >
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span className="font-mono">{permission}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Alert>
+                    <Shield className="h-4 w-4" />
+                    <AlertDescription>
+                      Contact your administrator to request additional permissions or role changes.
+                    </AlertDescription>
+                  </Alert>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          <TabsContent value="api" className="space-y-6">
+            <motion.div variants={fadeInUp} initial="hidden" animate="visible">
+              <Card>
+                <CardHeader>
+                  <CardTitle>API Keys Management</CardTitle>
+                  <CardDescription>
+                    Manage API keys for integrations and external access
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {user?.role === 'admin' ? (
+                    <>
+                      <div className="space-y-4">
+                        <div>
+                          <Label className="text-sm font-medium">Live API Key</Label>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="flex-1 relative">
+                              <Input
+                                type={showApiKey ? 'text' : 'password'}
+                                value={mockApiKey}
+                                readOnly
+                                className="font-mono text-sm pr-20"
+                              />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setShowApiKey(!showApiKey)}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={handleCopyApiKey}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  {apiKeyCopied ? <CheckCircle2 className="h-4 w-4 text-chart-3" /> : <Copy className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Keep this key secure. Do not share it publicly.
+                          </p>
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-3">
+                          <Label className="text-sm font-medium">Key Information</Label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Created</p>
+                              <p className="font-medium">January 15, 2026</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Last Used</p>
+                              <p className="font-medium">2 hours ago</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Status</p>
+                              <Badge variant="secondary" className="bg-chart-3/10 text-chart-3">
+                                Active
+                              </Badge>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Rate Limit</p>
+                              <p className="font-medium">1000 requests/hour</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-3">
+                          <Label className="text-sm font-medium">API Endpoints</Label>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono">GET</Badge>
+                              <code className="text-muted-foreground">/api/v1/shipments</code>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono">POST</Badge>
+                              <code className="text-muted-foreground">/api/v1/deliveries</code>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono">PUT</Badge>
+                              <code className="text-muted-foreground">/api/v1/manifests/:id</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-3">
+                        <Button variant="outline" onClick={handleGenerateNewKey}>
+                          Generate New Key
+                        </Button>
+                        <Button variant="destructive">
+                          Revoke Key
+                        </Button>
+                      </div>
+
+                      <Alert>
+                        <Key className="h-4 w-4" />
+                        <AlertDescription>
+                          Generating a new key will invalidate the current one. Update all integrations before revoking.
+                        </AlertDescription>
+                      </Alert>
+                    </>
+                  ) : (
+                    <Alert>
+                      <Shield className="h-4 w-4" />
+                      <AlertDescription>
+                        API key management is only available for administrators. Contact your system admin for API access.
+                      </AlertDescription>
+                    </Alert>
                   )}
-                </span>
-              </div>
-            </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+        </Tabs>
 
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <button className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#0d2c54] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">
-                <PlusCircle size={14} />
-                {t("Create Account", "အကောင့်အသစ်ဖွင့်မည်")}
-              </button>
-
-              <div className="relative w-full md:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={accountQuery}
-                  onChange={(e) => setAccountQuery(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-10 pr-4 text-sm outline-none"
-                  placeholder={t("Search accounts", "အကောင့်ရှာရန်")}
-                />
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-black/10">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/80 text-left text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3 font-black">Name</th>
-                    <th className="px-4 py-3 font-black">Email</th>
-                    <th className="px-4 py-3 font-black">Role</th>
-                    <th className="px-4 py-3 font-black">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAccounts.map((row) => (
-                    <tr key={row.email} className="border-t border-black/5 bg-white/50">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.email}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.role}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase ${
-                            row.status === "ACTIVE"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : row.status === "PENDING"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-rose-100 text-rose-700"
-                          }`}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+        <div className="mt-8 flex justify-between items-center">
+          <Button variant="outline" onClick={logout}>
+            Sign Out
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            Last updated: {new Date().toLocaleDateString()}
+          </p>
         </div>
-      )}
+      </motion.div>
     </div>
   );
 }

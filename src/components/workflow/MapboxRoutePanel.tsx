@@ -14,7 +14,7 @@ export function MapboxRoutePanel({
   destinationAddress?: unknown;
   destinationCoord?: Coord | null;
 }) {
-  const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+  const token = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || import.meta.env.VITE_MAPBOX_TOKEN) as string | undefined;
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [summary, setSummary] = useState<{ distanceKm: number; durationMin: number } | null>(null);
 

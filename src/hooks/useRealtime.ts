@@ -81,11 +81,13 @@ interface UseRealtimeReturn {
   reconnect: () => void;
 }
 
+const configuredWsUrl = (import.meta.env.VITE_WS_URL as string | undefined)?.trim() || '';
+
 const DEFAULT_OPTIONS: Required<UseRealtimeOptions> = {
-  url: import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws',
+  url: configuredWsUrl,
   reconnectInterval: 3000,
   maxReconnectAttempts: 10,
-  autoConnect: true,
+  autoConnect: Boolean(configuredWsUrl),
 };
 
 export function useRealtime(options: UseRealtimeOptions = {}): UseRealtimeReturn {
@@ -195,6 +197,11 @@ export function useRealtime(options: UseRealtimeOptions = {}): UseRealtimeReturn
     setIsConnecting(true);
     setError(null);
     
+    if (!config.url) {
+      setIsConnecting(false);
+      return;
+    }
+
     try {
       const ws = new WebSocket(config.url);
       

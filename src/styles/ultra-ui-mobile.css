@@ -130,7 +130,16 @@ tbody tr:hover{
 }
 
 /* logo 2x */
-
+img[src*="logo.png"],
+img[src$="/logo.png"],
+.brand-logo img,
+.logo img,
+img[alt*="Britium"],
+img[alt*="logo" i]{
+  width:min(44vw, 320px) !important;
+  max-width:none !important;
+  height:auto !important;
+}
 
 /* replace ugly video feeling with gif-first approach on auth/login shells */
 video[src*="create_animated_video.gif"],
@@ -263,7 +272,15 @@ body:has(.auth-page){
 }
 
 /* enlarge logo roughly 2x */
-
+img[src*="logo.png"],
+img[src$="/logo.png"],
+.brand-logo img,
+.logo img,
+img[alt*="Britium"],
+img[alt*="logo" i]{
+  transform: scale(2) !important;
+  transform-origin: center !important;
+}
 
 /* mobile-first form layout */
 form,
@@ -293,90 +310,3 @@ form,
     width: min(100%, 720px) !important;
   }
 }
-
-
-/* login page logo size fix: ~1.5in diameter */
-.auth-page img[src*="logo.png"],
-.auth-page img[src$="/logo.png"],
-.login-page img[src*="logo.png"],
-.login-page img[src$="/logo.png"],
-.auth-shell img[src*="logo.png"],
-.auth-shell img[src$="/logo.png"],
-.login-shell img[src*="logo.png"],
-.login-shell img[src$="/logo.png"],
-[data-route="login"] img[src*="logo.png"],
-[data-route="login"] img[src$="/logo.png"],
-body:has(.login-page) img[src*="logo.png"],
-body:has(.auth-page) img[src*="logo.png"]{
-  width: 144px !important;
-  height: 144px !important;
-  max-width: 144px !important;
-  max-height: 144px !important;
-  min-width: 144px !important;
-  min-height: 144px !important;
-  transform: none !important;
-  object-fit: contain !important;
-  display: block !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
-
-@media (max-width: 768px){
-  .auth-page img[src*="logo.png"],
-  .auth-page img[src$="/logo.png"],
-  .login-page img[src*="logo.png"],
-  .login-page img[src$="/logo.png"],
-  .auth-shell img[src*="logo.png"],
-  .auth-shell img[src$="/logo.png"],
-  .login-shell img[src*="logo.png"],
-  .login-shell img[src$="/logo.png"],
-  [data-route="login"] img[src*="logo.png"],
-  [data-route="login"] img[src$="/logo.png"],
-  body:has(.login-page) img[src*="logo.png"],
-  body:has(.auth-page) img[src*="logo.png"]{
-    width: 120px !important;
-    height: 120px !important;
-    max-width: 120px !important;
-    max-height: 120px !important;
-    min-width: 120px !important;
-    min-height: 120px !important;
-    transform: none !important;
-  }
-}
-
-
-
-/* FORCE login logo size */
-img[src*="logo.png"],
-img[src$="/logo.png"],
-.brand-logo img,
-.logo img,
-img[alt*="Britium"],
-img[alt*="logo" i]{
-  max-width: 144px !important;
-  width: 144px !important;
-  height: 144px !important;
-  min-width: 144px !important;
-  min-height: 144px !important;
-  transform: none !important;
-  scale: 1 !important;
-  object-fit: contain !important;
-}
-
-@media (max-width: 768px){
-  img[src*="logo.png"],
-  img[src$="/logo.png"],
-  .brand-logo img,
-  .logo img,
-  img[alt*="Britium"],
-  img[alt*="logo" i]{
-    max-width: 120px !important;
-    width: 120px !important;
-    height: 120px !important;
-    min-width: 120px !important;
-    min-height: 120px !important;
-    transform: none !important;
-    scale: 1 !important;
-  }
-}
-

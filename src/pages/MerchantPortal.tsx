@@ -1,662 +1,264 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  ClipboardList,
-  Map,
-  Package,
-  RefreshCw,
-  Search,
-  ShoppingBag,
-  Store,
-  TrendingUp,
-  Truck,
-} from "lucide-react";
-import { readApiJson } from "@/lib/readApiJson";
-import { useT } from "@/hooks/useT";
-import { statusText } from "@/lib/statusText";
+// @ts-nocheck
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { RefreshCw, Save } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/hooks/useLanguage';
+import { getPortalBanner } from '@/lib/portalBanner';
+import { addressText, safeText } from '@/lib/displayValue';
+import { PortalBanner } from '@/components/portal/PortalBanner';
+import { PhotoUploaderField } from '@/components/workflow/PhotoUploaderField';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
-type AnyRow = Record<string, any>;
-
-const card: React.CSSProperties = {
-  border: "1px solid #dbe4ee",
-  borderRadius: 22,
-  background: "#fff",
-  padding: 18,
-  boxShadow: "0 10px 24px rgba(15,23,42,.04)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  border: "1px solid #cbd5e1",
-  borderRadius: 12,
-  padding: "11px 12px",
-  fontSize: 14,
-  fontFamily: "inherit",
-};
-
-const primaryBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 12,
-  background: "#0f766e",
-  color: "#fff",
-  padding: "12px 16px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondaryBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 12,
-  background: "#0f2f5c",
-  color: "#fff",
-  padding: "12px 16px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-function safe(v: any, fb = "-") {
-  return v === null || v === undefined || v === "" ? fb : String(v);
+function tt(language: string, en: string, mm: string) {
+  return language === 'mm' ? mm : en;
 }
-
-function money(v: any) {
-  const n = Number(v ?? 0);
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
-    Number.isFinite(n) ? n : 0
-  );
+function currentView(pathname: string) {
+  if (pathname.includes('/create')) return 'create';
+  if (pathname.includes('/reports')) return 'reports';
+  return 'deliveries';
 }
-
-function normalizeError(error: any, fallback: string) {
-  const message = String(error?.message || fallback);
-  if (/Unexpected token .* valid JSON/i.test(message)) {
-    return "Server returned an invalid response";
-  }
-  return message;
+function labelize(value: unknown) {
+  return String(value || 'unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
-
-async function safeGet(url: string) {
-  const res = await fetch(url);
-  return readApiJson(res);
-}
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  tone = "default",
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone?: "default" | "good" | "warn" | "info";
-}) {
-  const bg =
-    tone === "good"
-      ? "linear-gradient(135deg,#ecfdf5 0%,#f0fdf4 100%)"
-      : tone === "warn"
-        ? "linear-gradient(135deg,#fff7ed 0%,#fef3c7 100%)"
-        : tone === "info"
-          ? "linear-gradient(135deg,#eff6ff 0%,#eef2ff 100%)"
-          : "#fff";
-
-  return (
-    <div style={{ ...card, background: bg, padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
-          {label}
-        </div>
-        <div style={{ color: "#0f172a" }}>{icon}</div>
-      </div>
-      <div style={{ marginTop: 12, fontSize: 28, fontWeight: 900, color: "#0f172a" }}>{value}</div>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{title}</div>
-        {action}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
-    </section>
-  );
-}
-
-function RowCard({
-  title,
-  line1,
-  line2,
-  badge,
-  onClick,
-  active = false,
-}: {
-  title: string;
-  line1: string;
-  line2?: string;
-  badge?: string;
-  onClick?: () => void;
-  active?: boolean;
-}) {
-  const body = (
-    <div
-      style={{
-        border: active ? "1px solid #93c5fd" : "1px solid #dbe4ee",
-        borderRadius: 16,
-        padding: 14,
-        background: active ? "#eff6ff" : "#f8fafc",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-        <strong style={{ color: "#0f172a" }}>{title}</strong>
-        {badge ? (
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#475569" }}>
-            {badge}
-          </span>
-        ) : null}
-      </div>
-      <div style={{ marginTop: 6, color: "#334155", fontSize: 13 }}>{line1}</div>
-      {line2 ? <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>{line2}</div> : null}
-    </div>
-  );
-
-  if (!onClick) return body;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: "none",
-        background: "transparent",
-        padding: 0,
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      {body}
-    </button>
-  );
-}
-
-function ActionLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        textDecoration: "none",
-        border: "1px solid #dbe4ee",
-        borderRadius: 14,
-        padding: 12,
-        color: "#0f172a",
-        fontWeight: 700,
-        background: "#fff",
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function DetailMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #dbe4ee",
-        borderRadius: 16,
-        padding: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
-        {value}
-      </div>
-    </div>
-  );
+function fmtCurrency(value: unknown) {
+  const num = Number(value || 0);
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number.isFinite(num) ? num : 0)} MMK`;
 }
 
 export default function MerchantPortal() {
-  const { lang, t: tr } = useT();
-
+  const { language } = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [view, setView] = useState(currentView(location.pathname));
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [query, setQuery] = useState("");
-  const [pickupRows, setPickupRows] = useState<AnyRow[]>([]);
-  const [deliveryRows, setDeliveryRows] = useState<AnyRow[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<any>(null);
+  const [merchant, setMerchant] = useState<any>(null);
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [photoPath, setPhotoPath] = useState('');
+  const [form, setForm] = useState({
+    awb: '',
+    recipient_name: '',
+    recipient_phone: '',
+    recipient_address: '',
+    cod_amount: '0',
+    shipping_fee: '0',
+    weight: '0',
+    special_instructions: '',
+  });
 
-  async function loadPortal(searchValue = query) {
+  useEffect(() => setView(currentView(location.pathname)), [location.pathname]);
+
+  async function loadData() {
     setLoading(true);
-    setMessage("");
+    try {
+      const { data: auth } = await supabase.auth.getUser();
 
-    const pickupQs = new URLSearchParams();
-    pickupQs.set("limit", "300");
-    if (searchValue.trim()) pickupQs.set("q", searchValue.trim());
+      const merchantRes = await supabase
+        .from('merchant_profiles')
+        .select('*')
+        .eq('auth_user_id', auth.user?.id || '')
+        .maybeSingle();
 
-    const deliveryQs = new URLSearchParams();
-    if (searchValue.trim()) deliveryQs.set("q", searchValue.trim());
+      let currentMerchant = merchantRes.data;
 
-    const results = await Promise.allSettled([
-      safeGet(`/api/v1/pickups?${pickupQs.toString()}`),
-      safeGet(`/api/v1/deliveries/workflow?${deliveryQs.toString()}`),
-    ]);
-
-    const pickups = results[0].status === "fulfilled" ? results[0].value : null;
-    const deliveries = results[1].status === "fulfilled" ? results[1].value : null;
-
-    if (results.every((r) => r.status === "rejected")) {
-      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-      setMessage(normalizeError(first?.reason, "Failed to load merchant portal"));
-    } else {
-      const rejectedCount = results.filter((r) => r.status === "rejected").length;
-      if (rejectedCount > 0) {
-        setMessage("Some merchant widgets could not be loaded, but the portal is available.");
+      if (!currentMerchant) {
+        const fallback = await supabase.from('merchant_profiles').select('*').limit(1).maybeSingle();
+        if (fallback.error) throw fallback.error;
+        currentMerchant = fallback.data;
       }
+
+      setMerchant(currentMerchant || null);
+
+      const shipRes = await supabase.from('shipments').select('*').order('created_at', { ascending: false });
+      if (shipRes.error) throw shipRes.error;
+
+      const receiptRes = await supabase.from('finance_receipts').select('*').order('issued_date', { ascending: false });
+      if (receiptRes.error) throw receiptRes.error;
+
+      const filteredShipments = (shipRes.data || []).filter((row: any) =>
+        (currentMerchant?.id && row.merchant_profile_id === currentMerchant.id) ||
+        (currentMerchant?.email && row.sender?.email === currentMerchant.email) ||
+        (currentMerchant?.phone && row.sender?.phone === currentMerchant.phone)
+      );
+
+      const filteredReceipts = (receiptRes.data || []).filter((row: any) => row.merchant_profile_id === currentMerchant?.id);
+
+      setShipments(filteredShipments);
+      setReceipts(filteredReceipts);
+    } catch (e) {
+      console.error(e);
+      setMerchant(null);
+      setShipments([]);
+      setReceipts([]);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    const pickupList = Array.isArray(pickups?.data)
-      ? pickups.data
-      : Array.isArray((pickups as any)?.pickups)
-        ? (pickups as any).pickups
-        : [];
-    const deliveryList = Array.isArray(deliveries?.data) ? deliveries.data : [];
+  useEffect(() => { loadData(); }, []);
 
-    setPickupRows(pickupList);
-    setDeliveryRows(deliveryList);
+  async function createShipment() {
+    if (!merchant) return;
 
-    const accounts = buildMerchantAccounts(pickupList, deliveryList);
-    setSelectedAccount((prev: any) => {
-      if (!accounts.length) return null;
-      if (!prev) return accounts[0];
-      return accounts.find((x: any) => x.name === prev.name) || accounts[0];
+    const { error } = await supabase.from('shipments').insert({
+      awb: form.awb,
+      status: 'pending',
+      merchant_profile_id: merchant.id,
+      sender: {
+        name: merchant.contact_name || merchant.merchant_name,
+        phone: merchant.phone,
+        email: merchant.email,
+        address: merchant.address,
+      },
+      recipient: {
+        name: form.recipient_name,
+        phone: form.recipient_phone,
+        address: form.recipient_address,
+      },
+      cod_amount: Number(form.cod_amount || 0),
+      shipping_fee: Number(form.shipping_fee || 0),
+      package_details: {
+        weight: Number(form.weight || 0),
+        merchant_photo_path: photoPath || null,
+      },
+      special_instructions: form.special_instructions || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
-    setLoading(false);
+    if (error) throw error;
+
+    setForm({
+      awb: '',
+      recipient_name: '',
+      recipient_phone: '',
+      recipient_address: '',
+      cod_amount: '0',
+      shipping_fee: '0',
+      weight: '0',
+      special_instructions: '',
+    });
+    setPhotoPath('');
+    await loadData();
   }
 
-  useEffect(() => {
-    void loadPortal("");
-  }, []);
-
-  const merchantAccounts = useMemo(
-    () => buildMerchantAccounts(pickupRows, deliveryRows),
-    [pickupRows, deliveryRows]
-  );
-
-  const serviceMix = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const row of deliveryRows) {
-      const service = String(row.service_type || "standard").trim() || "standard";
-      counts.set(service, (counts.get(service) || 0) + 1);
-    }
-
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([service, total]) => ({ service, total }));
-  }, [deliveryRows]);
-
-  const recentPickups = useMemo(() => {
-    return [...pickupRows]
-      .sort((a: AnyRow, b: AnyRow) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))
-      .slice(0, 8);
-  }, [pickupRows]);
-
-  const stats = useMemo(() => {
-    const totalPickups = pickupRows.length;
-    const totalWays = deliveryRows.length;
-    const delivered = deliveryRows.filter((x) => String(x.delivery_status || x.status || "").toUpperCase() === "DELIVERED").length;
-    const inPipeline = deliveryRows.filter((x) => {
-      const s = String(x.delivery_status || x.status || "").toUpperCase();
-      return ["SUBMITTED", "SAVED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "FAILED_ATTEMPT"].includes(s);
-    }).length;
-
-    const codExposure = deliveryRows.reduce((sum, x) => sum + Number(x.waybill_total_cod || x.receivable || 0), 0);
-    const activeAccounts = merchantAccounts.length;
-
-    const townshipSet = new Set(
-      deliveryRows
-        .map((x) => String(x.receiver_township || x.township || "").trim())
-        .filter(Boolean)
-    );
-
-    return {
-      activeAccounts,
-      totalPickups,
-      totalWays,
-      delivered,
-      inPipeline,
-      codExposure,
-      activeTownships: townshipSet.size,
-    };
-  }, [pickupRows, deliveryRows, merchantAccounts]);
+  const report = useMemo(() => {
+    const total = shipments.length;
+    const delivered = shipments.filter((r: any) => String(r.status) === 'delivered').length;
+    const pending = shipments.filter((r: any) => String(r.status) !== 'delivered').length;
+    const revenue = shipments.reduce((sum: number, row: any) => sum + Number(row.shipping_fee || 0), 0);
+    const cod = shipments.reduce((sum: number, row: any) => sum + Number(row.cod_amount || 0), 0);
+    return { total, delivered, pending, revenue, cod };
+  }, [shipments]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section
-        style={{
-          ...card,
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 18,
-          alignItems: "flex-start",
-        }}
+    <div className="space-y-6">
+      <PortalBanner
+        image={getPortalBanner(view === 'create' ? 'merchant_create' : view === 'reports' ? 'merchant_reports' : 'merchant')}
+        title={tt(language, 'Merchant Portal', 'Merchant Portal')}
+        subtitle={tt(language, 'Deliveries, shipment creation, and reports.', 'delivery, shipment ဖန်တီးခြင်း နှင့် report များ')}
       >
-        <div>
-          <div
-            style={{
-              display: "inline-flex",
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#eff6ff",
-              color: "#1d4ed8",
-              fontSize: 12,
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: ".12em",
-            }}
-          >
-            {tr("Merchant")}
-          </div>
-          <h1 style={{ margin: "14px 0 0", fontSize: 30, fontWeight: 900, color: "#0f172a" }}>
-            {tr("Merchant Portal")}
-          </h1>
-          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
-            {tr("Track merchant shipment activity, pickup performance, delivery pipeline, and COD exposure from one account workspace.")}
-          </p>
-        </div>
+        <Button variant="outline" onClick={loadData} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          {tt(language, 'Refresh', 'ပြန်လည်ရယူမည်')}
+        </Button>
+      </PortalBanner>
 
-        <button
-          type="button"
-          onClick={() => void loadPortal()}
-          style={{
-            ...secondaryBtn,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <RefreshCw size={16} />
-          {tr("Refresh")}
-        </button>
-      </section>
-
-      {message ? (
-        <div
-          style={{
-            border: "1px solid #a5f3fc",
-            background: "#ecfeff",
-            color: "#0f766e",
-            padding: "12px 14px",
-            borderRadius: 16,
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
-          {message}
-        </div>
-      ) : null}
-
-      <section
-        style={{
-          ...card,
-          display: "grid",
-          gridTemplateColumns: "minmax(320px,1fr) auto auto",
-          gap: 12,
-          alignItems: "end",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
-            {tr("Merchant Search")}
-          </div>
-          <input
-            style={inputStyle}
-            placeholder={tr("Search merchant, pickup ID, delivery ID, township, or phone")}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void loadPortal(query)}
-          style={{
-            ...primaryBtn,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Search size={16} />
-          {tr("Search")}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setQuery("");
-            void loadPortal("");
-          }}
-          style={secondaryBtn}
-        >
-          {tr("Clear")}
-        </button>
-      </section>
-
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
-        <KpiCard icon={<Store size={18} />} label={tr("Active Merchant Accounts")} value={String(stats.activeAccounts)} tone="info" />
-        <KpiCard icon={<ClipboardList size={18} />} label={tr("Pickup Batches")} value={String(stats.totalPickups)} />
-        <KpiCard icon={<Package size={18} />} label={tr("Total Shipment Ways")} value={String(stats.totalWays)} tone="good" />
-        <KpiCard icon={<Truck size={18} />} label={tr("Open Pipeline")} value={String(stats.inPipeline)} tone="warn" />
-        <KpiCard icon={<TrendingUp size={18} />} label={tr("Delivered Ways")} value={String(stats.delivered)} tone="good" />
-        <KpiCard icon={<ShoppingBag size={18} />} label={tr("COD Exposure")} value={`${money(stats.codExposure)} MMK`} tone="warn" />
-        <KpiCard icon={<Map size={18} />} label={tr("Active Townships")} value={String(stats.activeTownships)} tone="info" />
-        <KpiCard icon={<Package size={18} />} label={tr("Service Mix Categories")} value={String(serviceMix.length)} />
-      </section>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 18 }}>
-        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <Panel
-            title={tr("Merchant Accounts")}
-            action={
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                {merchantAccounts.length} account(s)
-              </span>
-            }
-          >
-            {merchantAccounts.length ? (
-              merchantAccounts.slice(0, 12).map((row: any) => (
-                <RowCard
-                  key={row.name}
-                  active={selectedAccount?.name === row.name}
-                  onClick={() => setSelectedAccount(row)}
-                  title={safe(row.name)}
-                  badge={`${row.pickups} pickup(s)`}
-                  line1={`${tr("Ways")}: ${row.ways} · ${tr("Delivered")}: ${row.delivered}`}
-                  line2={`${tr("Pipeline")}: ${row.pipeline} · ${tr("COD")}: ${money(row.codExposure)} MMK`}
-                />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading merchant portal...") : tr("No merchant records found.")}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title={tr("Recent Pickup Activity")}>
-            {recentPickups.length ? (
-              recentPickups.map((row: AnyRow) => (
-                <RowCard
-                  key={safe(row.pickup_id)}
-                  title={safe(row.pickup_id)}
-                  badge={statusText(lang, row.pickup_status || row.status)}
-                  line1={`${safe(row.merchant_name || row.business_name || row.contact_name)} · ${safe(row.pickup_city)} / ${safe(row.pickup_township)}`}
-                  line2={`${tr("Ways")}: ${safe(row.actual_way_count || row.expected_way_count || 0)} · ${tr("Updated")}: ${safe(row.updated_at || row.created_at)}`}
-                />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading merchant portal...") : tr("No recent pickup activity found.")}
-              </div>
-            )}
-          </Panel>
-        </section>
-
-        <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <Panel title={tr("Selected Merchant Detail")}>
-            {selectedAccount ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                  <DetailMetric label={tr("Merchant")} value={safe(selectedAccount.name)} />
-                  <DetailMetric label={tr("Pickup Batches")} value={String(selectedAccount.pickups)} />
-                  <DetailMetric label={tr("Total Ways")} value={String(selectedAccount.ways)} />
-                  <DetailMetric label={tr("Delivered Ways")} value={String(selectedAccount.delivered)} />
-                  <DetailMetric label={tr("Open Pipeline")} value={String(selectedAccount.pipeline)} />
-                  <DetailMetric label={tr("COD Exposure")} value={`${money(selectedAccount.codExposure)} MMK`} />
-                  <DetailMetric label={tr("Top City")} value={safe(selectedAccount.topCity)} />
-                  <DetailMetric label={tr("Top Township")} value={safe(selectedAccount.topTownship)} />
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-                  <ActionLink to="/pickup-registration" label={tr("Open Pickup Registration")} />
-                  <ActionLink to="/delivery-registration" label={tr("Open Delivery Registration")} />
-                  <ActionLink to="/customer-service" label={tr("Open Customer Service")} />
-                  <ActionLink to="/marketing" label={tr("Open Marketing Portal")} />
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading merchant portal...") : tr("Select a merchant to view details.")}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title={tr("Service Mix")}>
-            {serviceMix.length ? (
-              serviceMix.map((row) => (
-                <RowCard
-                  key={row.service}
-                  title={row.service}
-                  line1={`${tr("Ways")}: ${row.total}`}
-                />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading merchant portal...") : tr("No service mix data found.")}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title={tr("Quick Actions")}>
-            <ActionLink to="/pickup-registration" label={tr("Create Pickup Batch")} />
-            <ActionLink to="/delivery-registration" label={tr("Create Delivery Entry")} />
-            <ActionLink to="/master/tariffs" label={tr("Open Tariff Master")} />
-            <ActionLink to="/dashboard" label={tr("Open Dashboard")} />
-          </Panel>
-        </section>
+      <div className="grid gap-2 rounded-2xl bg-muted p-1 md:grid-cols-3">
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'deliveries' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/merchant/deliveries')}>{tt(language, 'My Deliveries', 'My Deliveries')}</button>
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'create' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/merchant/create')}>{tt(language, 'Create Shipment', 'Create Shipment')}</button>
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'reports' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/merchant/reports')}>{tt(language, 'Reports', 'Reports')}</button>
       </div>
+
+      {view === 'deliveries' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{tt(language, 'Merchant Shipments', 'Merchant Shipments')}</CardTitle>
+            <CardDescription>{merchant ? safeText(merchant.merchant_name) : '—'}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {shipments.map((row: any) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{safeText(row.awb)}</div>
+                    <div className="text-sm text-muted-foreground">{safeText(row.recipient?.name)} · {safeText(row.recipient?.phone)}</div>
+                    <div className="text-sm text-muted-foreground">{addressText(row.recipient?.address)}</div>
+                  </div>
+                  <Badge>{labelize(row.status)}</Badge>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {view === 'create' && (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_420px]">
+          <Card>
+            <CardHeader><CardTitle>{tt(language, 'Create Shipment', 'Shipment ဖန်တီးရန်')}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="AWB" value={form.awb} onChange={(e) => setForm({ ...form, awb: e.target.value })} />
+              <Input placeholder={tt(language, 'Recipient Name', 'လက်ခံသူအမည်')} value={form.recipient_name} onChange={(e) => setForm({ ...form, recipient_name: e.target.value })} />
+              <Input placeholder={tt(language, 'Recipient Phone', 'လက်ခံသူဖုန်း')} value={form.recipient_phone} onChange={(e) => setForm({ ...form, recipient_phone: e.target.value })} />
+              <Input placeholder={tt(language, 'Recipient Address', 'လက်ခံသူလိပ်စာ')} value={form.recipient_address} onChange={(e) => setForm({ ...form, recipient_address: e.target.value })} />
+              <Input placeholder={tt(language, 'COD Amount', 'COD ပမာဏ')} value={form.cod_amount} onChange={(e) => setForm({ ...form, cod_amount: e.target.value })} />
+              <Input placeholder={tt(language, 'Shipping Fee', 'ပို့ခ')} value={form.shipping_fee} onChange={(e) => setForm({ ...form, shipping_fee: e.target.value })} />
+              <Input placeholder={tt(language, 'Weight KG', 'အလေးချိန် KG')} value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
+              <textarea className="min-h-[100px] w-full rounded-md border p-3 text-sm" placeholder={tt(language, 'Special Instructions', 'အထူးညွှန်ကြားချက်')} value={form.special_instructions} onChange={(e) => setForm({ ...form, special_instructions: e.target.value })} />
+              <PhotoUploaderField label={tt(language, 'Package Photo', 'Package Photo')} onUploaded={(path) => setPhotoPath(path)} />
+              <Button onClick={createShipment}>
+                <Save className="mr-2 h-4 w-4" />
+                {tt(language, 'Save Shipment', 'Shipment သိမ်းမည်')}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>{tt(language, 'Merchant Profile', 'Merchant Profile')}</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <div>{safeText(merchant?.merchant_name)}</div>
+              <div className="text-sm text-muted-foreground">{safeText(merchant?.contact_name)}</div>
+              <div className="text-sm text-muted-foreground">{safeText(merchant?.phone)} · {safeText(merchant?.email)}</div>
+              <div className="text-sm text-muted-foreground">{addressText(merchant?.address)}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {view === 'reports' && (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Total', 'စုစုပေါင်း')}</div><div className="mt-2 text-4xl font-semibold">{report.total}</div></CardContent></Card>
+            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Delivered', 'ပို့ပြီး')}</div><div className="mt-2 text-4xl font-semibold">{report.delivered}</div></CardContent></Card>
+            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Pending', 'စောင့်ဆိုင်း')}</div><div className="mt-2 text-4xl font-semibold">{report.pending}</div></CardContent></Card>
+            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'Revenue', 'ဝင်ငွေ')}</div><div className="mt-2 text-4xl font-semibold">{fmtCurrency(report.revenue)}</div></CardContent></Card>
+            <Card><CardContent className="p-6"><div className="text-sm text-muted-foreground">{tt(language, 'COD', 'COD')}</div><div className="mt-2 text-4xl font-semibold">{fmtCurrency(report.cod)}</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle>{tt(language, 'Receipts', 'Receipts')}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {receipts.map((row: any) => (
+                <div key={row.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{row.receipt_number}</div>
+                    <div className="text-sm text-muted-foreground">{row.period_start} → {row.period_end}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold">{fmtCurrency(row.amount)}</div>
+                    <div className="text-sm text-muted-foreground">{labelize(row.status)}</div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
-}
-
-function buildMerchantAccounts(pickups: AnyRow[], deliveries: AnyRow[]) {
-  const byMerchant = new Map<
-    string,
-    {
-      name: string;
-      pickups: number;
-      ways: number;
-      delivered: number;
-      pipeline: number;
-      codExposure: number;
-      cityCounts: Map<string, number>;
-      townshipCounts: Map<string, number>;
-    }
-  >();
-
-  const deliveryByPickup = new Map<string, AnyRow[]>();
-  for (const row of deliveries) {
-    const pickupId = String(row.pickup_id || "").trim();
-    if (!pickupId) continue;
-    if (!deliveryByPickup.has(pickupId)) deliveryByPickup.set(pickupId, []);
-    deliveryByPickup.get(pickupId)!.push(row);
-  }
-
-  for (const pickup of pickups) {
-    const merchant =
-      String(
-        pickup.merchant_name ||
-        pickup.business_name ||
-        pickup.contact_name ||
-        pickup.sender_name ||
-        ""
-      ).trim() || "Unassigned Merchant";
-
-    if (!byMerchant.has(merchant)) {
-      byMerchant.set(merchant, {
-        name: merchant,
-        pickups: 0,
-        ways: 0,
-        delivered: 0,
-        pipeline: 0,
-        codExposure: 0,
-        cityCounts: new Map<string, number>(),
-        townshipCounts: new Map<string, number>(),
-      });
-    }
-
-    const agg = byMerchant.get(merchant)!;
-    agg.pickups += 1;
-
-    const pickupId = String(pickup.pickup_id || "").trim();
-    const linked = pickupId ? deliveryByPickup.get(pickupId) || [] : [];
-    const wayCount = linked.length || Number(pickup.actual_way_count || pickup.expected_way_count || 0);
-    agg.ways += wayCount;
-
-    for (const row of linked) {
-      const status = String(row.delivery_status || row.status || "").toUpperCase();
-      if (status === "DELIVERED") agg.delivered += 1;
-      if (["SUBMITTED", "SAVED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "FAILED_ATTEMPT"].includes(status)) {
-        agg.pipeline += 1;
-      }
-
-      agg.codExposure += Number(row.waybill_total_cod || row.receivable || 0);
-
-      const city = String(row.receiver_city || "").trim();
-      const township = String(row.receiver_township || row.township || "").trim();
-
-      if (city) agg.cityCounts.set(city, (agg.cityCounts.get(city) || 0) + 1);
-      if (township) agg.townshipCounts.set(township, (agg.townshipCounts.get(township) || 0) + 1);
-    }
-  }
-
-  return Array.from(byMerchant.values())
-    .map((row) => {
-      const topCity = Array.from(row.cityCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-      const topTownship = Array.from(row.townshipCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-      return {
-        name: row.name,
-        pickups: row.pickups,
-        ways: row.ways,
-        delivered: row.delivered,
-        pipeline: row.pipeline,
-        codExposure: row.codExposure,
-        topCity,
-        topTownship,
-      };
-    })
-    .sort((a, b) => b.ways - a.ways || b.pickups - a.pickups);
 }

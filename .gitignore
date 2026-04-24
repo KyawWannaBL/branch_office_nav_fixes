@@ -108,3 +108,5 @@ dist/
 node_modules/
 .vercel/
 *.log
+
+.env*.local

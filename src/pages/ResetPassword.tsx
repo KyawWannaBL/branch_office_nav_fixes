@@ -1,200 +1,263 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Loader2, Lock, CheckCircle2, AlertCircle } from "lucide-react";
-import { supabase } from "@/lib/supabase/client";
-
-function readRecoveryTokens() {
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const search = new URLSearchParams(window.location.search);
-
-  return {
-    accessToken: hash.get("access_token") || search.get("access_token"),
-    refreshToken: hash.get("refresh_token") || search.get("refresh_token"),
-    type: hash.get("type") || search.get("type"),
-  };
-}
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Lock, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ROUTE_PATHS } from '@/lib/index';
+import { supabase } from '@/integrations/supabase/client';
+import { useBilingual } from '@/lib/bilingual';
+import { getStableBackground } from '@/lib/screenBackground';
 
 export default function ResetPassword() {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasValidSession, setHasValidSession] = useState(false);
+
   const navigate = useNavigate();
-
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [booting, setBooting] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  const passwordMismatch = useMemo(() => {
-    return confirmPassword.length > 0 && password !== confirmPassword;
-  }, [password, confirmPassword]);
+  const { bt } = useBilingual();
+  const heroBackground = getStableBackground('/reset-password');
 
   useEffect(() => {
-    let active = true;
-
-    async function initRecovery() {
+    const checkSession = async () => {
       try {
-        const { accessToken, refreshToken, type } = readRecoveryTokens();
+        const hash = window.location.hash;
+        let tokenParams = '';
 
-        if (type !== "recovery" || !accessToken || !refreshToken) {
-          throw new Error("Invalid or expired password reset link.");
+        if (hash.includes('access_token=')) {
+          tokenParams = hash.substring(hash.indexOf('access_token='));
         }
 
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
+        const hashParams = new URLSearchParams(tokenParams);
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const type = hashParams.get('type');
 
-        if (error) throw error;
+        if (accessToken && type === 'recovery') {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
 
-        if (active) setReady(true);
-      } catch (err) {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Unable to verify reset link.");
-          setReady(false);
+          if (error) {
+            setError(
+              bt(
+                'Failed to verify reset link. Please request a new password reset.',
+                'Reset link ကို အတည်မပြုနိုင်ပါ။ Password reset အသစ်တောင်းခံပါ။'
+              )
+            );
+            setIsLoading(false);
+            return;
+          }
+
+          setHasValidSession(true);
+          setIsLoading(false);
+          return;
         }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session) {
+          setHasValidSession(true);
+        } else {
+          setError(
+            bt(
+              'Invalid or expired reset link. Please request a new password reset from the login page.',
+              'Reset link သည် မမှန်ကန်ပါ သို့မဟုတ် သက်တမ်းကုန်သွားပါပြီ။ Login page မှ password reset အသစ်တောင်းခံပါ။'
+            )
+          );
+        }
+      } catch {
+        setError(bt('An error occurred. Please try again.', 'အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။ ထပ်မံကြိုးစားပါ။'));
       } finally {
-        if (active) setBooting(false);
+        setIsLoading(false);
       }
-    }
-
-    void initRecovery();
-
-    return () => {
-      active = false;
     };
-  }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
+    checkSession();
+  }, [bt]);
+
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!password.trim()) {
-      setError("New password is required.");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
+    setError('');
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(bt('Passwords do not match', 'စကားဝှက်နှစ်ခု မကိုက်ညီပါ'));
       return;
     }
 
-    setSubmitting(true);
+    if (password.length < 6) {
+      setError(bt('Password must be at least 6 characters long', 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံး ရှိရမည်'));
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password,
-      });
-
+      const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      setSuccess("Password updated successfully. Please sign in again.");
+      setSuccess(true);
 
-      await supabase.auth.signOut();
-
-      window.setTimeout(() => {
-        navigate("/login", { replace: true });
-      }, 1200);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update password.");
+      setTimeout(() => {
+        navigate(ROUTE_PATHS.LOGIN || '/login');
+      }, 2500);
+    } catch (err: any) {
+      setError(err?.message || bt('Failed to reset password. Please try again.', 'စကားဝှက်ပြန်သတ်မှတ်မှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။'));
     } finally {
-      setSubmitting(false);
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_54%,#f8fafc_100%)] px-4">
-      <div className="w-full max-w-md rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-black text-[#0d2c54]">Reset Password</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Set a new password for your Britium Express account.
-        </p>
-
-        {booting ? (
-          <div className="mt-8 inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Verifying reset link...
-          </div>
-        ) : !ready ? (
-          <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error || "This reset link is invalid or expired."}
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-            <div>
-              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                New Password
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
-                  placeholder="Enter new password"
-                />
-              </div>
+    <div className="min-h-screen flex bg-background">
+      <div className="flex-1 flex items-center justify-center p-8">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="w-full max-w-md"
+        >
+          <div className="mb-8 text-center">
+            <div className="inline-flex items-center justify-center mb-4">
+              <img src="/logo.png" alt="Britium Express" className="h-16 w-auto" />
             </div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Britium Express</h1>
+            <p className="text-muted-foreground">
+              {bt('Reset Your Password', 'သင့်စကားဝှက်ကို ပြန်လည်သတ်မှတ်ပါ')}
+            </p>
+          </div>
 
-            <div>
-              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:border-[#0d2c54]/30 focus:bg-white focus:ring-4 focus:ring-[#0d2c54]/10"
-                  placeholder="Confirm new password"
-                />
-              </div>
-            </div>
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>{bt('Create New Password', 'စကားဝှက်အသစ် ဖန်တီးရန်')}</CardTitle>
+              <CardDescription>{bt('Enter your new password below', 'အောက်တွင် စကားဝှက်အသစ် ထည့်ပါ')}</CardDescription>
+            </CardHeader>
 
-            {passwordMismatch ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                Passwords do not match.
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                <AlertCircle className="mt-0.5 h-4 w-4" />
-                <span>{error}</span>
-              </div>
-            ) : null}
-
-            {success ? (
-              <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                <CheckCircle2 className="mt-0.5 h-4 w-4" />
-                <span>{success}</span>
-              </div>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={submitting || passwordMismatch}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#0d2c54] px-4 text-sm font-black uppercase tracking-[0.16em] text-white disabled:opacity-70"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Updating
-                </>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-3 text-muted-foreground">
+                    {bt('Verifying reset link...', 'Reset link ကို စစ်ဆေးနေသည်...')}
+                  </span>
+                </div>
+              ) : !hasValidSession ? (
+                <div className="space-y-4">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login')}>
+                    {bt('Back to Login', 'Login သို့ ပြန်သွားမည်')}
+                  </Button>
+                </div>
+              ) : success ? (
+                <Alert className="border-green-500 bg-green-50 text-green-900">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription>
+                    {bt('Password reset successful. Redirecting to login...', 'စကားဝှက်ပြန်သတ်မှတ်မှု အောင်မြင်ပါသည်။ Login သို့ ပြန်လည်ပို့ဆောင်နေသည်...')}
+                  </AlertDescription>
+                </Alert>
               ) : (
-                "Update Password"
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password">{bt('New Password', 'စကားဝှက်အသစ်')}</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder={bt('Enter new password', 'စကားဝှက်အသစ် ထည့်ပါ')}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pl-10"
+                        required
+                        minLength={6}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">{bt('Confirm Password', 'စကားဝှက်ကို ထပ်မံအတည်ပြုပါ')}</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        placeholder={bt('Confirm new password', 'စကားဝှက်အသစ်ကို ထပ်မံထည့်ပါ')}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="pl-10"
+                        required
+                        minLength={6}
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {bt('Password must be at least 6 characters long', 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံး ရှိရမည်')}
+                    </p>
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {bt('Resetting password...', 'စကားဝှက်ပြန်သတ်မှတ်နေသည်...')}
+                      </>
+                    ) : (
+                      bt('Reset Password', 'စကားဝှက်ပြန်သတ်မှတ်ရန်')
+                    )}
+                  </Button>
+
+                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login')}>
+                    {bt('Back to Login', 'Login သို့ ပြန်သွားမည်')}
+                  </Button>
+                </form>
               )}
-            </button>
-          </form>
-        )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      <div
+        className="hidden lg:flex flex-1 relative bg-cover bg-center"
+        style={{ backgroundImage: `url(${heroBackground})` }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/88 to-primary/62" />
+        <div className="relative z-10 flex flex-col justify-center p-12 text-white">
+          <motion.div
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.35, delay: 0.1 }}
+          >
+            <h2 className="text-4xl font-bold mb-6">
+              {bt('Secure Password Reset', 'လုံခြုံသော စကားဝှက်ပြန်သတ်မှတ်မှု')}
+            </h2>
+            <p className="text-xl mb-8 text-white/90">
+              {bt(
+                'Your account security is our priority. Create a strong password to protect your data.',
+                'သင့်အကောင့်လုံခြုံရေးသည် အရေးကြီးပါသည်။ သင့်ဒေတာကို ကာကွယ်ရန် ခိုင်မာသော စကားဝှက်ကို အသုံးပြုပါ။'
+              )}
+            </p>
+          </motion.div>
+        </div>
       </div>
     </div>
   );

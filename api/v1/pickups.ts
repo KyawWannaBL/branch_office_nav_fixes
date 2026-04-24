@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../_lib/serverSupabase.ts";
-import { calculateDeliveryPricing } from "../_lib/deliveryPricing";
+import { supabaseAdmin } from '../_lib/serverSupabase.js';
+import { calculateDeliveryPricing } from '../_lib/deliveryPricing.js';
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);

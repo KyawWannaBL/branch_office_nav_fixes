@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { calculateDeliveryPricing } from "../../_lib/deliveryPricing";
+import { calculateDeliveryPricing } from '../../_lib/deliveryPricing.js';
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);

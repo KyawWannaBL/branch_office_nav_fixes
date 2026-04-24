@@ -1,192 +1,244 @@
-import { Link, useLocation } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import type { LucideIcon } from 'lucide-react';
 import {
-  Activity,
   BarChart3,
-  CheckCircle2,
+  Bike,
+  Building2,
   Database,
-  FileText,
-  Files,
+  FilePlus2,
+  Headset,
   LayoutDashboard,
-  LocateFixed,
-  Map,
+  Megaphone,
   Package,
-  Receipt,
-  ShieldCheck,
+  QrCode,
+  Settings2,
+  Store,
   Truck,
-  Wallet, Headset, Store, Megaphone, UserRound, Users, Settings2, Crown, Building2 } from "lucide-react";
+  UserRound,
+  Users,
+  Warehouse,
+  Waypoints,
+  ShieldCheck,
+} from 'lucide-react';
 
-import { useT } from "@/hooks/useT";
-import LanguageToggle from "@/components/LanguageToggle";
+import { useAuth } from '@/contexts/AuthContext';
 
 type NavItem = {
   title: string;
   path: string;
   icon: LucideIcon;
+  roles?: string[];
 };
 
-type NavSection = {
-  label: string;
-  items: NavItem[];
+type SidebarProps = {
+  collapsed?: boolean;
+  mobile?: boolean;
+  onNavigate?: () => void;
 };
 
-const sections: NavSection[] = [
+const NAV_ITEMS: NavItem[] = [
+  { title: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   {
-    label: "General",
-    items: [
-      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-      { title: "Operations Admin", path: "/operations-admin", icon: Settings2 },
-      { title: "Super Admin", path: "/super-admin", icon: Crown },
-      { title: "Branch Office", path: "/branch-office", icon: Building2 },
-      { title: "Pickup Control Center", path: "/pickup-registration", icon: Package },
-      { title: "Delivery Control Center", path: "/delivery-registration", icon: Package },
-      { title: "Way Management", path: "/way-management", icon: Package },
-      { title: "Customer Service", path: "/customer-service", icon: Headset },
-      { title: "Marketing", path: "/marketing", icon: Megaphone },
-      { title: "Merchant", path: "/merchant", icon: Store },
-      { title: "Customer", path: "/customer", icon: UserRound },
-      { title: "HR Portal", path: "/admin-hr", icon: Users },
-    ],
+    title: 'Supervisor',
+    path: '/supervisor',
+    icon: Users,
+    roles: ['super-admin', 'admin', 'supervisor'],
   },
   {
-    label: "Delivery Operations",
-    items: [
-      { title: "Delivery Workflow", path: "/delivery-workflow", icon: Truck },
-      { title: "Rider Portal", path: "/rider-portal", icon: Truck },
-      { title: "Delivery Dispatch", path: "/delivery-dispatch", icon: Truck },
-      { title: "Delivery Exceptions", path: "/delivery-exceptions", icon: Truck },
-      { title: "Pickup & Delivery Overview", path: "/pickup-delivery-overview", icon: Map },
-      { title: "Pickup Control Center", path: "/pickup-control-center", icon: LocateFixed },
-    ],
+    title: 'Wayplan',
+    path: '/wayplan',
+    icon: Waypoints,
+    roles: ['super-admin', 'admin', 'branch-office'],
   },
   {
-    label: "Finance",
-    items: [
-      { title: "COD Settlements", path: "/cod-settlements", icon: Wallet },
-      { title: "Finance Reconciliation", path: "/finance-reconciliation", icon: Wallet },
-      { title: "Finance Export", path: "/finance-export-pack", icon: Database },
-      { title: "Batch Drill-Down", path: "/finance-batch-drilldown", icon: Database },
-      { title: "Rider Settlement", path: "/rider-settlement-report", icon: Database },
-      { title: "Audit Logs", path: "/audit-logs", icon: ShieldCheck },
-    ],
+    title: 'Driver',
+    path: '/driver',
+    icon: Truck,
+    roles: ['super-admin', 'admin', 'driver'],
   },
   {
-    label: "Operations",
-    items: [
-      { title: "Operations Command", path: "/operations-command-center", icon: Activity },
-      { title: "Executive Operations", path: "/executive-operations", icon: BarChart3 },
-    ],
+    title: 'Rider',
+    path: '/rider',
+    icon: Bike,
+    roles: ['super-admin', 'admin', 'branch-office', 'rider'],
   },
   {
-    label: "Data Entry",
-    items: [
-      { title: "Data Entry Operations", path: "/data-entry-operations", icon: FileText },
-      { title: "Delivered Registration", path: "/delivered-registration", icon: CheckCircle2 },
-      { title: "Daily Consolidation", path: "/daily-consolidation", icon: Files },
-      { title: "Tariff Master", path: "/master/tariffs", icon: Receipt },
-    ],
+    title: 'Warehouse',
+    path: '/warehouse',
+    icon: Warehouse,
+    roles: ['super-admin', 'admin', 'branch-office', 'warehouse-staff'],
+  },
+  {
+    title: 'Data Entry',
+    path: '/data-entry',
+    icon: Database,
+    roles: ['super-admin', 'admin', 'branch-office'],
+  },
+  {
+    title: 'Customer Service',
+    path: '/customer-service',
+    icon: Headset,
+    roles: ['super-admin', 'admin', 'branch-office', 'customer-service'],
+  },
+  {
+    title: 'Marketing',
+    path: '/marketing',
+    icon: Megaphone,
+    roles: ['super-admin', 'admin', 'marketing'],
+  },
+  {
+    title: 'HR',
+    path: '/hr',
+    icon: Users,
+    roles: ['super-admin', 'admin', 'hr'],
+  },
+  {
+    title: 'Finance',
+    path: '/finance',
+    icon: BarChart3,
+    roles: ['super-admin', 'admin', 'branch-office', 'finance'],
+  },
+  {
+    title: 'Merchant',
+    path: '/merchant',
+    icon: Store,
+    roles: ['super-admin', 'admin', 'merchant'],
+  },
+  {
+    title: 'Customer',
+    path: '/customer',
+    icon: UserRound,
+    roles: ['super-admin', 'admin', 'customer'],
+  },
+  {
+    title: 'Create Delivery',
+    path: '/create-delivery',
+    icon: FilePlus2,
+    roles: ['super-admin', 'admin', 'branch-office'],
+  },
+  {
+    title: 'Branch Office',
+    path: '/branch-office',
+    icon: Building2,
+    roles: ['super-admin', 'admin', 'branch-office'],
+  },
+  {
+    title: 'QR Code',
+    path: '/qr-code',
+    icon: QrCode,
+    roles: ['super-admin', 'admin', 'branch-office'],
+  },
+  {
+    title: 'Analytics',
+    path: '/analytics',
+    icon: BarChart3,
+    roles: ['super-admin', 'admin', 'branch-office', 'finance'],
+  },
+  {
+    title: 'Master Data',
+    path: '/master-data',
+    icon: Package,
+    roles: ['super-admin', 'admin'],
+  },
+  {
+    title: 'Settings',
+    path: '/settings',
+    icon: Settings2,
   },
 ];
 
-export function Sidebar() {
-  const location = useLocation();
-  const { t: tr } = useT();
+const normalizeRole = (role?: string | null) =>
+  String(role ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-');
 
-  const isActive = (path: string) => {
-    return location.pathname === path || location.pathname.startsWith(`${path}/`);
-  };
+export default function Sidebar({
+  collapsed = false,
+  mobile = false,
+  onNavigate,
+}: SidebarProps) {
+  const location = useLocation();
+  const { profile } = useAuth();
+
+  const role = normalizeRole(profile?.role);
+  const showText = mobile || !collapsed;
+  const showAll = role === 'super-admin' || role === 'admin';
+
+  const items = NAV_ITEMS.filter((item) => {
+    if (showAll) return true;
+    if (!item.roles || item.roles.length === 0) return true;
+    return item.roles.includes(role);
+  });
 
   return (
-    <aside
-      style={{
-        width: 280,
-        minWidth: 280,
-        height: "100%",
-        overflowY: "auto",
-        borderRight: "1px solid #e2e8f0",
-        background: "#ffffff",
-        padding: 16,
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ marginBottom: 20 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            textTransform: "uppercase",
-            letterSpacing: ".12em",
-            color: "#0f766e",
-          }}
+    <aside className="flex h-full flex-col bg-card">
+      <div className="flex h-16 items-center border-b border-border px-4">
+        <Link
+          to="/dashboard"
+          onClick={onNavigate}
+          className="flex items-center gap-3 overflow-hidden"
         >
-          BRITIUM EXPRESS
-        </div>
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 20,
-            fontWeight: 900,
-            color: "#0f172a",
-            lineHeight: 1.2,
-          }}
-        >
-          Logistics Portal
-        </div>
+          <img
+            src="/images/logo.png"
+            alt="Britium Express"
+            className="h-9 w-auto shrink-0"
+          />
+          {showText && (
+            <div className="min-w-0">
+              <div className="truncate text-xs font-bold uppercase tracking-[0.22em] text-primary">
+                Britium Express
+              </div>
+              <div className="truncate text-sm font-semibold text-foreground">
+                Logistics Portal
+              </div>
+            </div>
+          )}
+        </Link>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <LanguageToggle />
-      </div>
+      <div className="flex-1 space-y-1 overflow-y-auto p-3">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active =
+            location.pathname === item.path ||
+            location.pathname.startsWith(item.path + '/');
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        {sections.map((section) => (
-          <div key={section.label}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: ".08em",
-                color: "#64748b",
-                marginBottom: 8,
-                padding: "0 8px",
-              }}
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              onClick={onNavigate}
+              className={[
+                'flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold transition-colors',
+                active
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                !showText ? 'justify-center px-2' : '',
+              ].join(' ')}
             >
-              {tr(section.label)}
-            </div>
+              <Icon className="h-5 w-5 shrink-0" />
+              {showText && <span className="truncate">{item.title}</span>}
+            </NavLink>
+          );
+        })}
+      </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.path);
-
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      textDecoration: "none",
-                      background: active ? "#0f766e" : "transparent",
-                      color: active ? "#ffffff" : "#0f172a",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <Icon size={16} />
-                    <span>{tr(item.title)}</span>
-                  </Link>
-                );
-              })}
+      <div className="border-t border-border p-3">
+        <div className="flex items-center gap-3 rounded-2xl bg-muted/40 px-3 py-3">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          {showText && (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-foreground">
+                {profile?.role ? profile.role : 'authenticated-user'}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                Access controlled by role
+              </div>
             </div>
-          </div>
-        ))}
-      </nav>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }
-
-export default Sidebar;
