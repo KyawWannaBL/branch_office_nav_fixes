@@ -11,11 +11,17 @@ import {
   Truck,
   Users,
 } from "lucide-react";
-import { readApiJson } from "@/lib/readApiJson";
 import { useT } from "@/hooks/useT";
 import { statusText } from "@/lib/statusText";
 
 type AnyRow = Record<string, any>;
+
+type ProbeResult = {
+  ok: boolean;
+  data: any;
+  error: string;
+  url: string;
+};
 
 const card: React.CSSProperties = {
   border: "1px solid #dbe4ee",
@@ -46,37 +52,93 @@ function money(v: any) {
   );
 }
 
-function normalizeError(error: any, fallback: string) {
-  const message = String(error?.message || fallback);
-  if (/Unexpected token .* valid JSON/i.test(message)) {
-    return "Server returned an invalid response";
+function userMessageFromError(message: string) {
+  const m = String(message || "");
+  if (!m) return "Unknown error";
+  if (m.toLowerCase().includes("<!doctype html") || m.toLowerCase().includes("<html")) {
+    return "API route returned HTML instead of JSON";
   }
-  return message;
+  if (m.includes("Unexpected token") && m.includes("JSON")) {
+    return "API route returned an invalid JSON response";
+  }
+  if (m.includes("Failed to fetch")) {
+    return "Network request failed";
+  }
+  return m;
 }
 
-async function safeGet(url: string) {
-  const res = await fetch(url);
-  return readApiJson(res);
+async function fetchJsonCandidate(url: string): Promise<ProbeResult> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+
+    const text = await res.text();
+    const trimmed = String(text || "").trim();
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        data: null,
+        error: userMessageFromError(trimmed || `${res.status} ${res.statusText}`),
+        url,
+      };
+    }
+
+    if (!trimmed) {
+      return { ok: true, data: {}, error: "", url };
+    }
+
+    if (trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html")) {
+      return {
+        ok: false,
+        data: null,
+        error: "API route returned HTML instead of JSON",
+        url,
+      };
+    }
+
+    try {
+      return {
+        ok: true,
+        data: JSON.parse(trimmed),
+        error: "",
+        url,
+      };
+    } catch {
+      return {
+        ok: false,
+        data: null,
+        error: "API route returned invalid JSON",
+        url,
+      };
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      data: null,
+      error: userMessageFromError(error?.message || "Request failed"),
+      url,
+    };
+  }
 }
 
-async function safeAuditGet() {
-  const urls = [
-    "/api/v1/audit/logs?limit=300",
-    "/api/system/audit-logs?limit=300",
-  ];
-
-  let lastError: any = null;
+async function probeJson(urls: string[]): Promise<ProbeResult> {
+  let last: ProbeResult = {
+    ok: false,
+    data: null,
+    error: "No route tried",
+    url: "",
+  };
 
   for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      return await readApiJson(res);
-    } catch (error) {
-      lastError = error;
-    }
+    const result = await fetchJsonCandidate(url);
+    if (result.ok) return result;
+    last = result;
   }
 
-  throw lastError || new Error("Failed to load audit logs");
+  return last;
 }
 
 function KpiCard({
@@ -233,62 +295,90 @@ export default function SuperAdminPortal() {
     setLoading(true);
     setMessage("");
 
-    const results = await Promise.allSettled([
-      safeGet("/api/v1/operations/command-center"),
-      safeGet("/api/v1/riders/portal"),
-      safeGet("/api/v1/deliveries/workflow"),
-      safeGet("/api/v1/ways/dispatch-batches"),
-      safeGet("/api/v1/delivery-exceptions?queue=failed"),
-      safeGet("/api/v1/pickups?limit=250"),
-      safeGet("/api/v1/master/tariffs"),
-      safeAuditGet(),
+    const [
+      commandCenter,
+      riderPortal,
+      workflow,
+      batches,
+      exceptions,
+      pickups,
+      tariffs,
+      audit,
+    ] = await Promise.all([
+      probeJson([
+        "/api/v1/operations/command-center",
+        "/api/v1/operations-command-center",
+      ]),
+      probeJson([
+        "/api/v1/riders/portal",
+        "/api/v1/rider-portal",
+      ]),
+      probeJson([
+        "/api/v1/deliveries/workflow",
+        "/api/v1/delivery-workflow",
+      ]),
+      probeJson([
+        "/api/v1/ways/dispatch-batches",
+        "/api/v1/dispatch-batches",
+      ]),
+      probeJson([
+        "/api/v1/delivery-exceptions?queue=failed",
+        "/api/v1/exceptions?queue=failed",
+      ]),
+      probeJson([
+        "/api/v1/pickups?limit=250",
+        "/api/v1/pickups/control-center",
+      ]),
+      probeJson([
+        "/api/v1/master/tariffs",
+        "/api/v1/tariffs",
+      ]),
+      probeJson([
+        "/api/v1/audit/logs?limit=300",
+        "/api/system/audit-logs?limit=300",
+      ]),
     ]);
 
-    const commandCenter = results[0].status === "fulfilled" ? results[0].value : null;
-    const riderPortal = results[1].status === "fulfilled" ? results[1].value : null;
-    const workflow = results[2].status === "fulfilled" ? results[2].value : null;
-    const batches = results[3].status === "fulfilled" ? results[3].value : null;
-    const exceptions = results[4].status === "fulfilled" ? results[4].value : null;
-    const pickups = results[5].status === "fulfilled" ? results[5].value : null;
-    const tariffs = results[6].status === "fulfilled" ? results[6].value : null;
-    const audit = results[7].status === "fulfilled" ? results[7].value : null;
+    const health = {
+      commandCenter: commandCenter.ok,
+      riderPortal: riderPortal.ok,
+      workflow: workflow.ok,
+      batches: batches.ok,
+      exceptions: exceptions.ok,
+      pickups: pickups.ok,
+      tariffs: tariffs.ok,
+      audit: audit.ok,
+    };
 
-    if (results.every((r) => r.status === "rejected")) {
-      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-      setMessage(normalizeError(first?.reason, "Failed to load super admin portal"));
-      setPayload(null);
-      setLoading(false);
-      return;
+    const okCount = Object.values(health).filter(Boolean).length;
+    if (okCount === 0) {
+      setMessage("Go-live APIs are unavailable or returning HTML instead of JSON. Check deployed Vercel API routes.");
+    } else if (okCount < 8) {
+      const failedNames = Object.entries(health)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name)
+        .join(", ");
+      setMessage(`Some widgets could not be loaded: ${failedNames}`);
     }
 
-    const rejectedCount = results.filter((r) => r.status === "rejected").length;
-    if (rejectedCount > 0) {
-      setMessage("Some super admin widgets could not be loaded, but the portal is available.");
-    }
+    const pickupData = Array.isArray(pickups.data?.data)
+      ? pickups.data.data
+      : Array.isArray(pickups.data?.pickups)
+        ? pickups.data.pickups
+        : Array.isArray(pickups.data?.data?.active_pickups)
+          ? pickups.data.data.active_pickups
+          : [];
 
     setPayload({
-      commandCenter: commandCenter?.data || null,
-      riderPortal: riderPortal?.data || null,
-      workflow: Array.isArray(workflow?.data) ? workflow.data : [],
-      batches: Array.isArray(batches?.data) ? batches.data : [],
-      exceptions: Array.isArray(exceptions?.data) ? exceptions.data : [],
-      pickups: Array.isArray(pickups?.data)
-        ? pickups.data
-        : Array.isArray((pickups as any)?.pickups)
-          ? (pickups as any).pickups
-          : [],
-      tariffs: Array.isArray(tariffs?.data) ? tariffs.data : [],
-      audit: Array.isArray(audit?.data) ? audit.data : [],
-      apiHealth: {
-        commandCenter: results[0].status === "fulfilled",
-        riderPortal: results[1].status === "fulfilled",
-        workflow: results[2].status === "fulfilled",
-        batches: results[3].status === "fulfilled",
-        exceptions: results[4].status === "fulfilled",
-        pickups: results[5].status === "fulfilled",
-        tariffs: results[6].status === "fulfilled",
-        audit: results[7].status === "fulfilled",
-      },
+      commandCenter: commandCenter.data?.data || commandCenter.data || null,
+      riderPortal: riderPortal.data?.data || riderPortal.data || null,
+      workflow: Array.isArray(workflow.data?.data) ? workflow.data.data : Array.isArray(workflow.data) ? workflow.data : [],
+      batches: Array.isArray(batches.data?.data) ? batches.data.data : Array.isArray(batches.data) ? batches.data : [],
+      exceptions: Array.isArray(exceptions.data?.data) ? exceptions.data.data : Array.isArray(exceptions.data) ? exceptions.data : [],
+      pickups: pickupData,
+      tariffs: Array.isArray(tariffs.data?.data) ? tariffs.data.data : Array.isArray(tariffs.data) ? tariffs.data : [],
+      audit: Array.isArray(audit.data?.data) ? audit.data.data : Array.isArray(audit.data) ? audit.data : [],
+      apiHealth: health,
     });
 
     setLoading(false);
@@ -326,7 +416,7 @@ export default function SuperAdminPortal() {
     ).length;
 
     const auditToday = auditRows.filter((x: AnyRow) =>
-      String(x.occurred_at || "").slice(0, 10) === today
+      String(x.occurred_at || x.created_at || "").slice(0, 10) === today
     ).length;
 
     return {
@@ -388,7 +478,7 @@ export default function SuperAdminPortal() {
       .slice(0, 10);
   }, [payload]);
 
-  const commandKpis = payload?.commandCenter?.kpis || {};
+  const commandKpis = payload?.commandCenter?.kpis || payload?.commandCenter || {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -559,7 +649,7 @@ export default function SuperAdminPortal() {
                   title={safe(row.action)}
                   badge={safe(row.target_status, "")}
                   line1={`${safe(row.actor_name)} · ${safe(row.actor_role)}`}
-                  line2={`${safe(row.resource_type)} · ${safe(row.resource_id)} · ${safe(row.occurred_at)}`}
+                  line2={`${safe(row.resource_type)} · ${safe(row.resource_id)} · ${safe(row.occurred_at || row.created_at)}`}
                 />
               ))
             ) : (
