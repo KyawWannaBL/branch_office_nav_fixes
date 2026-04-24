@@ -1,19 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   BarChart3,
-  Map,
-  Megaphone,
-  Package,
+  BellRing,
+  Briefcase,
+  Gift,
+  Image as ImageIcon,
   RefreshCw,
-  Store,
-  Target,
-  TrendingUp,
-  Users,
+  Wallet,
 } from "lucide-react";
-import { readApiJson } from "@/lib/readApiJson";
 import { useT } from "@/hooks/useT";
-import { statusText } from "@/lib/statusText";
 
 type AnyRow = Record<string, any>;
 
@@ -65,17 +60,27 @@ function money(v: any) {
   );
 }
 
-function normalizeError(error: any, fallback: string) {
-  const message = String(error?.message || fallback);
-  if (/Unexpected token .* valid JSON/i.test(message)) {
-    return "Server returned an invalid response";
-  }
-  return message;
-}
+async function readJson(res: Response) {
+  const text = await res.text();
+  const trimmed = String(text || "").trim();
 
-async function safeGet(url: string) {
-  const res = await fetch(url);
-  return readApiJson(res);
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    try {
+      const parsed = trimmed ? JSON.parse(trimmed) : {};
+      message = parsed?.error || parsed?.message || message;
+    } catch {
+      if (trimmed) message = trimmed;
+    }
+    throw new Error(message);
+  }
+
+  if (!trimmed) return {};
+  if (trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html")) {
+    throw new Error("Marketing API returned HTML instead of JSON");
+  }
+
+  return JSON.parse(trimmed);
 }
 
 function KpiCard({
@@ -131,30 +136,30 @@ function Panel({
   );
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function RowCard({
   title,
   line1,
   line2,
   badge,
-  onClick,
-  active = false,
 }: {
   title: string;
   line1: string;
   line2?: string;
   badge?: string;
-  onClick?: () => void;
-  active?: boolean;
 }) {
-  const body = (
-    <div
-      style={{
-        border: active ? "1px solid #93c5fd" : "1px solid #dbe4ee",
-        borderRadius: 16,
-        padding: 14,
-        background: active ? "#eff6ff" : "#f8fafc",
-      }}
-    >
+  return (
+    <div style={{ border: "1px solid #dbe4ee", borderRadius: 16, padding: 14, background: "#f8fafc" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <strong style={{ color: "#0f172a" }}>{title}</strong>
         {badge ? (
@@ -167,194 +172,121 @@ function RowCard({
       {line2 ? <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>{line2}</div> : null}
     </div>
   );
-
-  if (!onClick) return body;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: "none",
-        background: "transparent",
-        padding: 0,
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      {body}
-    </button>
-  );
-}
-
-function ActionLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        textDecoration: "none",
-        border: "1px solid #dbe4ee",
-        borderRadius: 14,
-        padding: 12,
-        color: "#0f172a",
-        fontWeight: 700,
-        background: "#fff",
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function DetailMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #dbe4ee",
-        borderRadius: 16,
-        padding: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 900, color: "#0f172a", wordBreak: "break-word" }}>
-        {value}
-      </div>
-    </div>
-  );
 }
 
 export default function MarketingPortal() {
-  const { lang, t: tr } = useT();
+  const { t: tr } = useT();
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [query, setQuery] = useState("");
-  const [pickupRows, setPickupRows] = useState<AnyRow[]>([]);
-  const [deliveryRows, setDeliveryRows] = useState<AnyRow[]>([]);
-  const [tariffRows, setTariffRows] = useState<AnyRow[]>([]);
-  const [selectedMerchant, setSelectedMerchant] = useState<any>(null);
+  const [payload, setPayload] = useState<any>(null);
 
-  async function loadPortal(searchValue = query) {
+  const [campaignForm, setCampaignForm] = useState({
+    title: "",
+    campaign_code: "",
+    promo_code: "",
+    campaign_type: "PROMO_CODE",
+    status: "DRAFT",
+    discount_type: "PERCENT",
+    discount_value: 15,
+    waives_overweight_surcharge: false,
+    geo_origin_city: "",
+    geo_origin_township: "",
+    volume_threshold: 0,
+    cashback_amount: 0,
+    start_date: "",
+    end_date: "",
+    description: "",
+  });
+
+  const [leadForm, setLeadForm] = useState({
+    company_name: "",
+    contact_name: "",
+    phone: "",
+    email: "",
+    city: "",
+    township: "",
+    lead_status: "COLD_LEAD",
+    monthly_way_target: 0,
+    proposed_tariff_rate: 0,
+    notes: "",
+  });
+
+  const [assetForm, setAssetForm] = useState({
+    asset_name: "",
+    asset_type: "IMAGE",
+    asset_category: "BRAND",
+    file_url: "",
+    branch_scope: "GLOBAL",
+    notes: "",
+  });
+
+  const [broadcastForm, setBroadcastForm] = useState({
+    audience_type: "MERCHANTS",
+    channel: "IN_APP",
+    title: "",
+    message: "",
+  });
+
+  const [walletForm, setWalletForm] = useState({
+    party_id: "",
+    campaign_id: "",
+    credit_amount: 0,
+    remarks: "",
+  });
+
+  async function loadData() {
     setLoading(true);
-    setMessage("");
-
-    const pickupQs = new URLSearchParams();
-    pickupQs.set("limit", "300");
-    if (searchValue.trim()) pickupQs.set("q", searchValue.trim());
-
-    const deliveryQs = new URLSearchParams();
-    if (searchValue.trim()) deliveryQs.set("q", searchValue.trim());
-
-    const results = await Promise.allSettled([
-      safeGet(`/api/v1/pickups?${pickupQs.toString()}`),
-      safeGet(`/api/v1/deliveries/workflow?${deliveryQs.toString()}`),
-      safeGet("/api/v1/master/tariffs"),
-    ]);
-
-    const pickups = results[0].status === "fulfilled" ? results[0].value : null;
-    const deliveries = results[1].status === "fulfilled" ? results[1].value : null;
-    const tariffs = results[2].status === "fulfilled" ? results[2].value : null;
-
-    if (results.every((r) => r.status === "rejected")) {
-      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-      setMessage(normalizeError(first?.reason, "Failed to load marketing portal"));
-    } else {
-      const rejectedCount = results.filter((r) => r.status === "rejected").length;
-      if (rejectedCount > 0) {
-        setMessage("Some marketing widgets could not be loaded, but the portal is available.");
-      }
+    try {
+      const res = await fetch("/api/v1/marketing/portal", {
+        headers: { Accept: "application/json" },
+      });
+      const data = await readJson(res);
+      setPayload(data?.data || {});
+      const warnings = Array.isArray(data?.data?.warnings) ? data.data.warnings : [];
+      setMessage(warnings.length ? `Some sources were unavailable: ${warnings.slice(0, 3).join(" | ")}` : "");
+    } catch (error: any) {
+      setMessage(error?.message || "Failed to load marketing portal");
+      setPayload(null);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    const pickupList = Array.isArray(pickups?.data)
-      ? pickups.data
-      : Array.isArray((pickups as any)?.pickups)
-        ? (pickups as any).pickups
-        : [];
-    const deliveryList = Array.isArray(deliveries?.data) ? deliveries.data : [];
-    const tariffList = Array.isArray(tariffs?.data) ? tariffs.data : [];
-
-    setPickupRows(pickupList);
-    setDeliveryRows(deliveryList);
-    setTariffRows(tariffList);
-
-    setSelectedMerchant((prev: any) => {
-      const merchantMap = buildMerchantRows(pickupList, deliveryList);
-      if (!merchantMap.length) return null;
-      if (!prev) return merchantMap[0];
-      return merchantMap.find((x: any) => x.name === prev.name) || merchantMap[0];
-    });
-
-    setLoading(false);
+  async function runAction(action: string, body: Record<string, any>) {
+    try {
+      const res = await fetch("/api/v1/marketing/action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ action, ...body }),
+      });
+      const data = await readJson(res);
+      setMessage(data?.message || "Marketing action completed");
+      await loadData();
+    } catch (error: any) {
+      setMessage(error?.message || "Marketing action failed");
+    }
   }
 
   useEffect(() => {
-    void loadPortal("");
+    void loadData();
   }, []);
 
-  const merchantRows = useMemo(
-    () => buildMerchantRows(pickupRows, deliveryRows),
-    [pickupRows, deliveryRows]
+  const campaigns = payload?.campaigns || [];
+  const leads = payload?.leads || [];
+  const assets = payload?.assets || [];
+  const broadcasts = payload?.broadcasts || [];
+  const merchants = payload?.merchants || [];
+  const analytics = payload?.analytics || {};
+  const kpis = payload?.kpis || {};
+
+  const activeCampaigns = useMemo(
+    () => campaigns.filter((x: AnyRow) => String(x.status || "").toUpperCase() === "ACTIVE"),
+    [campaigns]
   );
-
-  const topTownships = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const row of deliveryRows) {
-      const township = String(row.receiver_township || row.township || "").trim();
-      if (!township) continue;
-      counts.set(township, (counts.get(township) || 0) + 1);
-    }
-
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([township, total]) => ({ township, total }));
-  }, [deliveryRows]);
-
-  const serviceMix = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const row of deliveryRows) {
-      const service = String(row.service_type || "standard").trim() || "standard";
-      counts.set(service, (counts.get(service) || 0) + 1);
-    }
-
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([service, total]) => ({ service, total }));
-  }, [deliveryRows]);
-
-  const stats = useMemo(() => {
-    const uniqueMerchants = new Set(
-      pickupRows
-        .map((x) => String(x.merchant_name || x.business_name || x.contact_name || "").trim())
-        .filter(Boolean)
-    ).size;
-
-    const delivered = deliveryRows.filter((x) => String(x.delivery_status || x.status || "").toUpperCase() === "DELIVERED").length;
-    const submitted = deliveryRows.filter((x) => {
-      const s = String(x.delivery_status || x.status || "").toUpperCase();
-      return ["SUBMITTED", "SAVED", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(s);
-    }).length;
-
-    const totalWays = deliveryRows.length;
-    const totalPickupBatches = pickupRows.length;
-    const codExposure = deliveryRows.reduce((sum, x) => sum + Number(x.waybill_total_cod || x.receivable || 0), 0);
-
-    return {
-      totalPickupBatches,
-      uniqueMerchants,
-      totalWays,
-      delivered,
-      submitted,
-      coverageTownships: tariffRows.length,
-      codExposure,
-    };
-  }, [pickupRows, deliveryRows, tariffRows]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -387,13 +319,13 @@ export default function MarketingPortal() {
             {tr("Marketing Portal")}
           </h1>
           <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 14, lineHeight: 1.7 }}>
-            {tr("Track merchant growth, shipment demand, township coverage, and campaign-ready account performance from one commercial workspace.")}
+            {tr("Run promo campaigns, manage B2B leads, analyze route density, control brand assets, and queue omnichannel broadcasts from one marketing workspace.")}
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => void loadPortal()}
+          onClick={() => void loadData()}
           style={{
             ...secondaryBtn,
             display: "inline-flex",
@@ -422,260 +354,277 @@ export default function MarketingPortal() {
         </div>
       ) : null}
 
-      <section
-        style={{
-          ...card,
-          display: "grid",
-          gridTemplateColumns: "minmax(320px,1fr) auto auto",
-          gap: 12,
-          alignItems: "end",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "#64748b", marginBottom: 6 }}>
-            {tr("Merchant / Shipment Search")}
-          </div>
-          <input
-            style={inputStyle}
-            placeholder={tr("Search merchant, pickup ID, delivery ID, township, or phone")}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void loadPortal(query)}
-          style={{
-            ...primaryBtn,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Target size={16} />
-          {tr("Apply")}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setQuery("");
-            void loadPortal("");
-          }}
-          style={secondaryBtn}
-        >
-          {tr("Clear")}
-        </button>
-      </section>
-
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
-        <KpiCard icon={<Store size={18} />} label={tr("Active Merchant Accounts")} value={String(stats.uniqueMerchants)} tone="info" />
-        <KpiCard icon={<Package size={18} />} label={tr("Pickup Batches")} value={String(stats.totalPickupBatches)} />
-        <KpiCard icon={<TrendingUp size={18} />} label={tr("Total Shipment Ways")} value={String(stats.totalWays)} tone="good" />
-        <KpiCard icon={<Map size={18} />} label={tr("Coverage Townships")} value={String(stats.coverageTownships)} tone="info" />
-        <KpiCard icon={<BarChart3 size={18} />} label={tr("Delivered Ways")} value={String(stats.delivered)} tone="good" />
-        <KpiCard icon={<Users size={18} />} label={tr("Open Pipeline Ways")} value={String(stats.submitted)} tone="warn" />
-        <KpiCard icon={<Megaphone size={18} />} label={tr("Merchant Leaderboard")} value={String(merchantRows.length)} />
-        <KpiCard icon={<Package size={18} />} label={tr("COD Exposure")} value={`${money(stats.codExposure)} MMK`} tone="warn" />
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 14 }}>
+        <KpiCard icon={<Gift size={18} />} label={tr("Active Campaigns")} value={String(kpis.active_campaigns || 0)} tone="good" />
+        <KpiCard icon={<Briefcase size={18} />} label={tr("Open Leads")} value={String(kpis.open_leads || 0)} tone="info" />
+        <KpiCard icon={<ImageIcon size={18} />} label={tr("Verified Assets")} value={String(kpis.verified_assets || 0)} />
+        <KpiCard icon={<BellRing size={18} />} label={tr("Queued Broadcasts")} value={String(kpis.queued_broadcasts || 0)} tone="warn" />
+        <KpiCard icon={<Wallet size={18} />} label={tr("Wallet Exposure")} value={`${money(kpis.merchant_wallet_exposure || 0)} MMK`} />
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 18 }}>
         <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <Panel
-            title={tr("Merchant Performance")}
-            action={
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                {merchantRows.length} account(s)
-              </span>
-            }
-          >
-            {merchantRows.length ? (
-              merchantRows.slice(0, 12).map((row: any) => (
+          <Panel title={tr("Promo Code & Campaign Engine")}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
+              <Field label={tr("Campaign Title")}><input style={inputStyle} value={campaignForm.title} onChange={(e) => setCampaignForm({ ...campaignForm, title: e.target.value })} /></Field>
+              <Field label={tr("Campaign Code")}><input style={inputStyle} value={campaignForm.campaign_code} onChange={(e) => setCampaignForm({ ...campaignForm, campaign_code: e.target.value })} /></Field>
+              <Field label={tr("Promo Code")}><input style={inputStyle} value={campaignForm.promo_code} onChange={(e) => setCampaignForm({ ...campaignForm, promo_code: e.target.value })} /></Field>
+              <Field label={tr("Campaign Type")}>
+                <select style={inputStyle} value={campaignForm.campaign_type} onChange={(e) => setCampaignForm({ ...campaignForm, campaign_type: e.target.value })}>
+                  <option value="PROMO_CODE">PROMO_CODE</option>
+                  <option value="GEO_PROMO">GEO_PROMO</option>
+                  <option value="VOLUME_CASHBACK">VOLUME_CASHBACK</option>
+                  <option value="NEW_MERCHANT">NEW_MERCHANT</option>
+                </select>
+              </Field>
+              <Field label={tr("Discount Type")}>
+                <select style={inputStyle} value={campaignForm.discount_type} onChange={(e) => setCampaignForm({ ...campaignForm, discount_type: e.target.value })}>
+                  <option value="PERCENT">PERCENT</option>
+                  <option value="FIXED">FIXED</option>
+                </select>
+              </Field>
+              <Field label={tr("Discount Value")}><input style={inputStyle} type="number" value={campaignForm.discount_value} onChange={(e) => setCampaignForm({ ...campaignForm, discount_value: Number(e.target.value) })} /></Field>
+              <Field label={tr("Origin City")}><input style={inputStyle} value={campaignForm.geo_origin_city} onChange={(e) => setCampaignForm({ ...campaignForm, geo_origin_city: e.target.value })} /></Field>
+              <Field label={tr("Origin Township")}><input style={inputStyle} value={campaignForm.geo_origin_township} onChange={(e) => setCampaignForm({ ...campaignForm, geo_origin_township: e.target.value })} /></Field>
+              <Field label={tr("Volume Threshold")}><input style={inputStyle} type="number" value={campaignForm.volume_threshold} onChange={(e) => setCampaignForm({ ...campaignForm, volume_threshold: Number(e.target.value) })} /></Field>
+              <Field label={tr("Cashback Amount")}><input style={inputStyle} type="number" value={campaignForm.cashback_amount} onChange={(e) => setCampaignForm({ ...campaignForm, cashback_amount: Number(e.target.value) })} /></Field>
+              <Field label={tr("Start Date")}><input style={inputStyle} type="date" value={campaignForm.start_date} onChange={(e) => setCampaignForm({ ...campaignForm, start_date: e.target.value })} /></Field>
+              <Field label={tr("End Date")}><input style={inputStyle} type="date" value={campaignForm.end_date} onChange={(e) => setCampaignForm({ ...campaignForm, end_date: e.target.value })} /></Field>
+            </div>
+
+            <label style={{ display: "inline-flex", gap: 10, alignItems: "center", fontWeight: 700, color: "#334155" }}>
+              <input
+                type="checkbox"
+                checked={campaignForm.waives_overweight_surcharge}
+                onChange={(e) => setCampaignForm({ ...campaignForm, waives_overweight_surcharge: e.target.checked })}
+              />
+              {tr("Waive overweight surcharge")}
+            </label>
+
+            <Field label={tr("Description")}>
+              <textarea style={{ ...inputStyle, minHeight: 90 }} value={campaignForm.description} onChange={(e) => setCampaignForm({ ...campaignForm, description: e.target.value })} />
+            </Field>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button style={primaryBtn} onClick={() => void runAction("create_campaign", campaignForm)}>
+                {tr("Create Campaign")}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+              {campaigns.slice(0, 8).map((row: AnyRow) => (
                 <RowCard
-                  key={row.name}
-                  active={selectedMerchant?.name === row.name}
-                  onClick={() => setSelectedMerchant(row)}
-                  title={safe(row.name)}
-                  badge={`${row.pickups} pickup(s)`}
-                  line1={`${tr("Ways")}: ${row.ways} · ${tr("Delivered")}: ${row.delivered}`}
-                  line2={`${tr("Open Pipeline")}: ${row.pipeline} · ${tr("COD")}: ${money(row.codExposure)} MMK`}
+                  key={row.id}
+                  title={safe(row.title)}
+                  badge={safe(row.status)}
+                  line1={`${safe(row.campaign_type)} · ${safe(row.promo_code)} · ${safe(row.discount_type)} ${safe(row.discount_value)}`}
+                  line2={`${safe(row.geo_origin_township)} · ${safe(row.start_date)} → ${safe(row.end_date)}`}
                 />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading marketing portal...") : tr("No merchant performance records found.")}
-              </div>
-            )}
+              ))}
+              {!campaigns.length && <div style={{ color: "#64748b", textAlign: "center", padding: 18 }}>{loading ? tr("Loading campaigns...") : tr("No campaigns yet.")}</div>}
+            </div>
           </Panel>
 
-          <Panel title={tr("Top Delivery Townships")}>
-            {topTownships.length ? (
-              topTownships.map((row) => (
-                <RowCard
-                  key={row.township}
-                  title={row.township}
-                  line1={`${tr("Ways")}: ${row.total}`}
-                />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading marketing portal...") : tr("No township demand records found.")}
+          <Panel title={tr("B2B Merchant CRM")}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
+              <Field label={tr("Company Name")}><input style={inputStyle} value={leadForm.company_name} onChange={(e) => setLeadForm({ ...leadForm, company_name: e.target.value })} /></Field>
+              <Field label={tr("Contact Name")}><input style={inputStyle} value={leadForm.contact_name} onChange={(e) => setLeadForm({ ...leadForm, contact_name: e.target.value })} /></Field>
+              <Field label={tr("Phone")}><input style={inputStyle} value={leadForm.phone} onChange={(e) => setLeadForm({ ...leadForm, phone: e.target.value })} /></Field>
+              <Field label={tr("Email")}><input style={inputStyle} value={leadForm.email} onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })} /></Field>
+              <Field label={tr("City")}><input style={inputStyle} value={leadForm.city} onChange={(e) => setLeadForm({ ...leadForm, city: e.target.value })} /></Field>
+              <Field label={tr("Township")}><input style={inputStyle} value={leadForm.township} onChange={(e) => setLeadForm({ ...leadForm, township: e.target.value })} /></Field>
+              <Field label={tr("Lead Status")}>
+                <select style={inputStyle} value={leadForm.lead_status} onChange={(e) => setLeadForm({ ...leadForm, lead_status: e.target.value })}>
+                  <option value="COLD_LEAD">COLD_LEAD</option>
+                  <option value="QUALIFIED">QUALIFIED</option>
+                  <option value="NEGOTIATING_CONTRACT">NEGOTIATING_CONTRACT</option>
+                  <option value="ONBOARDING">ONBOARDING</option>
+                </select>
+              </Field>
+              <Field label={tr("Monthly Way Target")}><input style={inputStyle} type="number" value={leadForm.monthly_way_target} onChange={(e) => setLeadForm({ ...leadForm, monthly_way_target: Number(e.target.value) })} /></Field>
+              <Field label={tr("Proposed Tariff Rate")}><input style={inputStyle} type="number" value={leadForm.proposed_tariff_rate} onChange={(e) => setLeadForm({ ...leadForm, proposed_tariff_rate: Number(e.target.value) })} /></Field>
+            </div>
+
+            <Field label={tr("Notes")}>
+              <textarea style={{ ...inputStyle, minHeight: 90 }} value={leadForm.notes} onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })} />
+            </Field>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button style={primaryBtn} onClick={() => void runAction("save_lead", leadForm)}>
+                {tr("Save Lead")}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+              {leads.slice(0, 10).map((row: AnyRow) => (
+                <div key={row.id} style={{ border: "1px solid #dbe4ee", borderRadius: 16, padding: 14, background: "#f8fafc" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <strong>{safe(row.company_name)}</strong>
+                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#475569" }}>
+                      {safe(row.lead_status)}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 6, color: "#334155" }}>
+                    {safe(row.contact_name)} · {safe(row.phone)} · {safe(row.email)}
+                  </div>
+                  <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>
+                    {safe(row.city)} / {safe(row.township)} · {tr("Target")}: {safe(row.monthly_way_target)}
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      style={secondaryBtn}
+                      onClick={() => void runAction("convert_lead", { lead_id: row.id })}
+                    >
+                      {tr("Convert to Merchant")}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!leads.length && <div style={{ color: "#64748b", textAlign: "center", padding: 18 }}>{loading ? tr("Loading leads...") : tr("No leads yet.")}</div>}
+            </div>
+          </Panel>
+
+          <Panel title={tr("Geospatial & Operational Analytics")}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>{tr("Top Pickup Origins")}</div>
+                {(analytics.origin_density || []).map((row: AnyRow) => (
+                  <RowCard key={`origin-${row.name}`} title={safe(row.name)} line1={`${safe(row.count)} pickup(s)`} />
+                ))}
+                {!(analytics.origin_density || []).length && <div style={{ color: "#64748b" }}>{tr("No origin density data yet.")}</div>}
               </div>
-            )}
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>{tr("Top Delivery Destinations")}</div>
+                {(analytics.destination_density || []).map((row: AnyRow) => (
+                  <RowCard key={`dest-${row.name}`} title={safe(row.name)} line1={`${safe(row.count)} delivery(s)`} />
+                ))}
+                {!(analytics.destination_density || []).length && <div style={{ color: "#64748b" }}>{tr("No destination density data yet.")}</div>}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>{tr("Suggested Campaign Opportunities")}</div>
+              {(analytics.campaign_ideas || []).map((row: AnyRow, idx: number) => (
+                <RowCard key={`idea-${idx}`} title={safe(row.title)} line1={safe(row.rationale)} line2={safe(row.target)} />
+              ))}
+            </div>
           </Panel>
         </section>
 
         <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <Panel title={tr("Selected Merchant Detail")}>
-            {selectedMerchant ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                  <DetailMetric label={tr("Merchant")} value={safe(selectedMerchant.name)} />
-                  <DetailMetric label={tr("Pickup Batches")} value={String(selectedMerchant.pickups)} />
-                  <DetailMetric label={tr("Total Ways")} value={String(selectedMerchant.ways)} />
-                  <DetailMetric label={tr("Delivered Ways")} value={String(selectedMerchant.delivered)} />
-                  <DetailMetric label={tr("Open Pipeline")} value={String(selectedMerchant.pipeline)} />
-                  <DetailMetric label={tr("COD Exposure")} value={`${money(selectedMerchant.codExposure)} MMK`} />
-                  <DetailMetric label={tr("Primary City")} value={safe(selectedMerchant.topCity)} />
-                  <DetailMetric label={tr("Primary Township")} value={safe(selectedMerchant.topTownship)} />
-                </div>
+          <Panel title={tr("Brand & Asset Command Center")}>
+            <Field label={tr("Asset Name")}><input style={inputStyle} value={assetForm.asset_name} onChange={(e) => setAssetForm({ ...assetForm, asset_name: e.target.value })} /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label={tr("Asset Type")}>
+                <select style={inputStyle} value={assetForm.asset_type} onChange={(e) => setAssetForm({ ...assetForm, asset_type: e.target.value })}>
+                  <option value="IMAGE">IMAGE</option>
+                  <option value="VIDEO">VIDEO</option>
+                  <option value="AUDIO">AUDIO</option>
+                  <option value="DOCUMENT">DOCUMENT</option>
+                </select>
+              </Field>
+              <Field label={tr("Category")}>
+                <select style={inputStyle} value={assetForm.asset_category} onChange={(e) => setAssetForm({ ...assetForm, asset_category: e.target.value })}>
+                  <option value="BRAND">BRAND</option>
+                  <option value="UNIFORM">UNIFORM</option>
+                  <option value="DIGITAL_BANNER">DIGITAL_BANNER</option>
+                  <option value="EVENT_AUDIO_VISUAL">EVENT_AUDIO_VISUAL</option>
+                </select>
+              </Field>
+            </div>
+            <Field label={tr("File URL")}><input style={inputStyle} value={assetForm.file_url} onChange={(e) => setAssetForm({ ...assetForm, file_url: e.target.value })} /></Field>
+            <Field label={tr("Scope")}><input style={inputStyle} value={assetForm.branch_scope} onChange={(e) => setAssetForm({ ...assetForm, branch_scope: e.target.value })} /></Field>
+            <Field label={tr("Notes")}><textarea style={{ ...inputStyle, minHeight: 80 }} value={assetForm.notes} onChange={(e) => setAssetForm({ ...assetForm, notes: e.target.value })} /></Field>
+            <button style={primaryBtn} onClick={() => void runAction("save_asset", assetForm)}>
+              {tr("Save Asset")}
+            </button>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-                  <ActionLink to="/pickup-registration" label={tr("Open Pickup Registration")} />
-                  <ActionLink to="/delivery-registration" label={tr("Open Delivery Registration")} />
-                  <ActionLink to="/master/tariffs" label={tr("Open Tariff Master")} />
-                  <ActionLink to="/dashboard" label={tr("Open Dashboard")} />
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading marketing portal...") : tr("Select a merchant to view details.")}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title={tr("Service Mix")}>
-            {serviceMix.length ? (
-              serviceMix.map((row) => (
+            {(assets || []).slice(0, 10).map((row: AnyRow) => (
+              <a
+                key={row.id}
+                href={row.file_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
                 <RowCard
-                  key={row.service}
-                  title={row.service}
-                  line1={`${tr("Ways")}: ${row.total}`}
+                  title={safe(row.asset_name)}
+                  badge={row.is_verified ? tr("Verified") : tr("Draft")}
+                  line1={`${safe(row.asset_type)} · ${safe(row.asset_category)}`}
+                  line2={`${safe(row.branch_scope)} · ${safe(row.created_at)}`}
                 />
-              ))
-            ) : (
-              <div style={{ textAlign: "center", color: "#64748b", padding: 18 }}>
-                {loading ? tr("Loading marketing portal...") : tr("No service mix data found.")}
-              </div>
-            )}
+              </a>
+            ))}
+            {!assets.length && <div style={{ color: "#64748b", textAlign: "center", padding: 18 }}>{loading ? tr("Loading assets...") : tr("No assets yet.")}</div>}
           </Panel>
 
-          <Panel title={tr("Quick Actions")}>
-            <ActionLink to="/pickup-registration" label={tr("Create Pickup Lead")} />
-            <ActionLink to="/delivery-registration" label={tr("Create Delivery")} />
-            <ActionLink to="/customer-service" label={tr("Open Customer Service")} />
-            <ActionLink to="/supervisor" label={tr("Open Supervisor Portal")} />
+          <Panel title={tr("Omnichannel Broadcasting")}>
+            <Field label={tr("Audience Type")}>
+              <select style={inputStyle} value={broadcastForm.audience_type} onChange={(e) => setBroadcastForm({ ...broadcastForm, audience_type: e.target.value })}>
+                <option value="MERCHANTS">MERCHANTS</option>
+                <option value="END_RECEIVERS">END_RECEIVERS</option>
+                <option value="RIDERS">RIDERS</option>
+                <option value="BRANCHES">BRANCHES</option>
+              </select>
+            </Field>
+            <Field label={tr("Channel")}>
+              <select style={inputStyle} value={broadcastForm.channel} onChange={(e) => setBroadcastForm({ ...broadcastForm, channel: e.target.value })}>
+                <option value="IN_APP">IN_APP</option>
+                <option value="SMS">SMS</option>
+                <option value="VIBER">VIBER</option>
+                <option value="EMAIL">EMAIL</option>
+              </select>
+            </Field>
+            <Field label={tr("Title")}><input style={inputStyle} value={broadcastForm.title} onChange={(e) => setBroadcastForm({ ...broadcastForm, title: e.target.value })} /></Field>
+            <Field label={tr("Message")}><textarea style={{ ...inputStyle, minHeight: 90 }} value={broadcastForm.message} onChange={(e) => setBroadcastForm({ ...broadcastForm, message: e.target.value })} /></Field>
+            <button style={primaryBtn} onClick={() => void runAction("create_broadcast", broadcastForm)}>
+              {tr("Queue Broadcast")}
+            </button>
+
+            {(broadcasts || []).slice(0, 10).map((row: AnyRow) => (
+              <RowCard
+                key={row.id}
+                title={safe(row.title)}
+                badge={safe(row.status)}
+                line1={`${safe(row.channel)} · ${safe(row.audience_type)}`}
+                line2={safe(row.message)}
+              />
+            ))}
+            {!broadcasts.length && <div style={{ color: "#64748b", textAlign: "center", padding: 18 }}>{loading ? tr("Loading broadcasts...") : tr("No broadcasts queued.")}</div>}
+          </Panel>
+
+          <Panel title={tr("Merchant Cashback Wallet")}>
+            <Field label={tr("Merchant")}>
+              <select style={inputStyle} value={walletForm.party_id} onChange={(e) => setWalletForm({ ...walletForm, party_id: e.target.value })}>
+                <option value="">{tr("Select Merchant")}</option>
+                {merchants.map((row: AnyRow) => (
+                  <option key={row.id} value={row.id}>{safe(row.business_name)}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={tr("Campaign")}>
+              <select style={inputStyle} value={walletForm.campaign_id} onChange={(e) => setWalletForm({ ...walletForm, campaign_id: e.target.value })}>
+                <option value="">{tr("Optional Campaign")}</option>
+                {activeCampaigns.map((row: AnyRow) => (
+                  <option key={row.id} value={row.id}>{safe(row.title)}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={tr("Credit Amount")}><input style={inputStyle} type="number" value={walletForm.credit_amount} onChange={(e) => setWalletForm({ ...walletForm, credit_amount: Number(e.target.value) })} /></Field>
+            <Field label={tr("Remarks")}><textarea style={{ ...inputStyle, minHeight: 80 }} value={walletForm.remarks} onChange={(e) => setWalletForm({ ...walletForm, remarks: e.target.value })} /></Field>
+            <button style={primaryBtn} onClick={() => void runAction("credit_wallet", walletForm)}>
+              {tr("Post Wallet Credit")}
+            </button>
+          </Panel>
+
+          <Panel title={tr("Top Merchant Volume")}>
+            {(analytics.merchant_volume || []).map((row: AnyRow) => (
+              <RowCard key={row.name} title={safe(row.name)} line1={`${safe(row.count)} way(s)`} />
+            ))}
+            {!(analytics.merchant_volume || []).length && <div style={{ color: "#64748b", textAlign: "center", padding: 18 }}>{tr("No merchant volume data yet.")}</div>}
           </Panel>
         </section>
       </div>
     </div>
   );
-}
-
-function buildMerchantRows(pickups: AnyRow[], deliveries: AnyRow[]) {
-  const byMerchant = new Map<
-    string,
-    {
-      name: string;
-      pickups: number;
-      ways: number;
-      delivered: number;
-      pipeline: number;
-      codExposure: number;
-      topCity: string;
-      topTownship: string;
-      cityCounts: Map<string, number>;
-      townshipCounts: Map<string, number>;
-      pickupIds: Set<string>;
-    }
-  >();
-
-  const deliveryByPickup = new Map<string, AnyRow[]>();
-  for (const row of deliveries) {
-    const pickupId = String(row.pickup_id || "").trim();
-    if (!pickupId) continue;
-    if (!deliveryByPickup.has(pickupId)) deliveryByPickup.set(pickupId, []);
-    deliveryByPickup.get(pickupId)!.push(row);
-  }
-
-  for (const pickup of pickups) {
-    const merchant =
-      String(
-        pickup.merchant_name ||
-        pickup.business_name ||
-        pickup.contact_name ||
-        pickup.sender_name ||
-        ""
-      ).trim() || "Unassigned Merchant";
-
-    if (!byMerchant.has(merchant)) {
-      byMerchant.set(merchant, {
-        name: merchant,
-        pickups: 0,
-        ways: 0,
-        delivered: 0,
-        pipeline: 0,
-        codExposure: 0,
-        topCity: "",
-        topTownship: "",
-        cityCounts: new Map<string, number>(),
-        townshipCounts: new Map<string, number>(),
-        pickupIds: new Set<string>(),
-      });
-    }
-
-    const agg = byMerchant.get(merchant)!;
-    agg.pickups += 1;
-
-    const pickupId = String(pickup.pickup_id || "").trim();
-    if (pickupId) agg.pickupIds.add(pickupId);
-
-    const linked = pickupId ? deliveryByPickup.get(pickupId) || [] : [];
-    const wayCount = linked.length || Number(pickup.actual_way_count || pickup.expected_way_count || 0);
-    agg.ways += wayCount;
-
-    for (const row of linked) {
-      const status = String(row.delivery_status || row.status || "").toUpperCase();
-      if (status === "DELIVERED") agg.delivered += 1;
-      if (["SUBMITTED", "SAVED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "FAILED_ATTEMPT"].includes(status)) {
-        agg.pipeline += 1;
-      }
-
-      agg.codExposure += Number(row.waybill_total_cod || row.receivable || 0);
-
-      const city = String(row.receiver_city || "").trim();
-      const township = String(row.receiver_township || row.township || "").trim();
-
-      if (city) agg.cityCounts.set(city, (agg.cityCounts.get(city) || 0) + 1);
-      if (township) agg.townshipCounts.set(township, (agg.townshipCounts.get(township) || 0) + 1);
-    }
-  }
-
-  return Array.from(byMerchant.values())
-    .map((row) => {
-      const topCity = Array.from(row.cityCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-      const topTownship = Array.from(row.townshipCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-      return {
-        name: row.name,
-        pickups: row.pickups,
-        ways: row.ways,
-        delivered: row.delivered,
-        pipeline: row.pipeline,
-        codExposure: row.codExposure,
-        topCity,
-        topTownship,
-      };
-    })
-    .sort((a, b) => b.ways - a.ways || b.pickups - a.pickups);
 }
