@@ -1,5 +1,5 @@
-import { CreateDeliveryForm } from "./CreateDelivery";
+import DataEntryOperationsDashboard from "./DataEntryOperationsDashboard";
 
 export default function DeliveryRegistration() {
-  return <CreateDeliveryForm mode="delivery" />;
+  return <DataEntryOperationsDashboard />;
 }
