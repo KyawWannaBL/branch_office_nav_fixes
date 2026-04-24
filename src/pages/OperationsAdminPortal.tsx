@@ -195,6 +195,43 @@ function ActionLink({ to, label }: { to: string; label: string }) {
   );
 }
 
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #dbe4ee",
+        borderRadius: 16,
+        padding: 12,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: ".08em",
+          color: "#64748b",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 16,
+          fontWeight: 900,
+          color: "#0f172a",
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function ReadinessPill({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div
