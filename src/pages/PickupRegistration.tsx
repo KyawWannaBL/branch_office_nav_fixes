@@ -1,5 +1,5 @@
-import { CreateDeliveryForm } from "./CreateDelivery";
+import PickupControlCenter from "./PickupControlCenter";
 
 export default function PickupRegistration() {
-  return <CreateDeliveryForm mode="pickup" />;
+  return <PickupControlCenter />;
 }

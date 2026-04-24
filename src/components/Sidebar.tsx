@@ -38,7 +38,7 @@ const sections: NavSection[] = [
       { title: "Operations Admin", path: "/operations-admin", icon: Settings2 },
       { title: "Super Admin", path: "/super-admin", icon: Crown },
       { title: "Branch Office", path: "/branch-office", icon: Building2 },
-      { title: "Pickup Registration", path: "/pickup-registration", icon: Package },
+      { title: "Pickup Control Center", path: "/pickup-registration", icon: Package },
       { title: "Delivery Registration", path: "/delivery-registration", icon: Package },
       { title: "Way Management", path: "/way-management", icon: Package },
       { title: "Customer Service", path: "/customer-service", icon: Headset },

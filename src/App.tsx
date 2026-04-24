@@ -55,7 +55,7 @@ function PortalRoutes() {
 
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create-delivery" element={<CreateDelivery />} />
-          <Route path="/pickup-registration" element={<CreateDelivery />} />
+          <Route path="/pickup-registration" element={<PickupControlCenter />} />
           <Route path="/delivery-registration" element={<CreateDelivery />} />
 
           <Route path="/way-management" element={<WayManagement />} />
