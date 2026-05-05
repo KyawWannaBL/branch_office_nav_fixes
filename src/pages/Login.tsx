@@ -1,29 +1,57 @@
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Mail,
-  Lock,
   AlertCircle,
-  Loader2,
-  User,
-  CheckCircle,
-  ShieldCheck,
-  Download,
   ArrowRight,
+  CheckCircle,
+  Download,
+  Loader2,
+  Lock,
+  Mail,
+  ShieldCheck,
+  User,
 } from 'lucide-react';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  getDefaultRouteForRole,
-  useAuth,
-} from '@/contexts/AuthContext';
+import { getDefaultRouteForRole, useAuth } from '@/contexts/AuthContext';
 import { useBilingual } from '@/lib/bilingual';
 
 type AuthTab = 'login' | 'signup';
 type LoginMethod = 'password' | 'emailLink';
+
+type AuthProfileLike = {
+  role?: string | null;
+  mustChangePassword?: boolean;
+} | null;
+
+const PASSWORD_MIN_LENGTH = 8;
+
+function trimEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getSiteOrigin() {
+  const configured = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
+  const origin = configured && configured.length > 0 ? configured : window.location.origin;
+  return origin.replace(/\/$/, '');
+}
+
+function getLandingRoute(role?: string | null) {
+  const route = getDefaultRouteForRole(role, false) || '/dashboard';
+  return route === '/reset-password' ? '/dashboard' : route;
+}
+
+function getPostLoginRoute(profile: AuthProfileLike) {
+  const landing = getLandingRoute(profile?.role);
+  if (profile?.mustChangePassword) {
+    return `/must-change-password?next=${encodeURIComponent(landing)}`;
+  }
+  return landing;
+}
 
 export default function Login() {
   const [tab, setTab] = useState<AuthTab>('login');
@@ -57,6 +85,12 @@ export default function Login() {
   const apkUrl = (import.meta.env.VITE_ANDROID_APK_URL as string | undefined)?.trim();
   const isBusy = submitting || authLoading;
 
+  const darkInputClass = useMemo(
+    () =>
+      'h-12 w-full rounded-xl border border-white/10 bg-white/5 text-base text-white placeholder:text-white/40 pl-11 pr-4 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
+    []
+  );
+
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedLoginEmail');
     if (savedEmail) {
@@ -65,43 +99,36 @@ export default function Login() {
     }
   }, []);
 
-  // --- THE FIX IS HERE ---
-  // We no longer require profile?.role to be present to allow navigation.
-  // If the user authenticates but has no role, we fall back to '/' safely.
   useEffect(() => {
     if (!authLoading && user) {
-      try {
-        const route = getDefaultRouteForRole(profile?.role, profile?.mustChangePassword);
-        navigate(route || '/', { replace: true });
-      } catch {
-        navigate('/', { replace: true });
-      }
+      navigate(getPostLoginRoute(profile), { replace: true });
     }
-  }, [authLoading, user, profile, navigate]);
-
-  const persistRememberedEmail = (value: string) => {
-    if (rememberMe && value.trim()) {
-      localStorage.setItem('rememberedLoginEmail', value.trim());
-    } else {
-      localStorage.removeItem('rememberedLoginEmail');
-    }
-  };
+  }, [authLoading, navigate, profile, user]);
 
   const clearNotices = () => {
     setError('');
     setSuccessMessage('');
   };
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const persistRememberedEmail = (value: string) => {
+    const normalized = trimEmail(value);
+    if (rememberMe && normalized) {
+      localStorage.setItem('rememberedLoginEmail', normalized);
+    } else {
+      localStorage.removeItem('rememberedLoginEmail');
+    }
+  };
+
+  const handlePasswordLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     clearNotices();
     setSubmitting(true);
 
     try {
-      await signIn(email, password);
-      persistRememberedEmail(email);
-      // Success! We DO NOT call setSubmitting(false) here. 
-      // The button keeps spinning while the useEffect above takes over and navigates.
+      const normalizedEmail = trimEmail(email);
+      const nextProfile = await signIn(normalizedEmail, password);
+      persistRememberedEmail(normalizedEmail);
+      navigate(getPostLoginRoute(nextProfile), { replace: true });
     } catch (err: any) {
       setError(
         err?.message ||
@@ -110,26 +137,25 @@ export default function Login() {
             'အီးမေးလ် သို့မဟုတ် စကားဝှက် မမှန်ပါ။ ထပ်မံကြိုးစားပါ။'
           )
       );
-      setSubmitting(false); // Only stop spinning if there is an error
+      setSubmitting(false);
     }
   };
 
-  const handleEmailLinkLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEmailLinkLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     clearNotices();
     setSubmitting(true);
 
     try {
-      const siteUrl = window.location.origin.replace(/\/$/, '');
-      await sendMagicLink(email, `${siteUrl}/#/`);
-      persistRememberedEmail(email);
+      const normalizedEmail = trimEmail(email);
+      await sendMagicLink(normalizedEmail, `${getSiteOrigin()}/#/dashboard`);
+      persistRememberedEmail(normalizedEmail);
       setSuccessMessage(
         bt(
           'Magic link sent. Please check your email.',
           'အီးမေးလ်ဝင်ရန် link ပို့ပြီးပါပြီ။ သင့် inbox ကိုစစ်ဆေးပါ။'
         )
       );
-      setSubmitting(false);
     } catch (err: any) {
       setError(
         err?.message ||
@@ -138,19 +164,32 @@ export default function Login() {
             'Email link ပို့မရပါ။ ထပ်မံကြိုးစားပါ။'
           )
       );
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     clearNotices();
     setSubmitting(true);
 
     try {
-      await signUp(email, password, fullName);
-      persistRememberedEmail(email);
-      // Let the useEffect handle routing seamlessly once the account is created
+      const normalizedEmail = trimEmail(email);
+      const nextProfile = await signUp(normalizedEmail, password, fullName.trim());
+      persistRememberedEmail(normalizedEmail);
+
+      if (user || nextProfile) {
+        navigate(getPostLoginRoute(nextProfile), { replace: true });
+        return;
+      }
+
+      setSuccessMessage(
+        bt(
+          'Account request submitted. Please check your email if confirmation is required.',
+          'အကောင့်ဖန်တီးမှု တင်သွင်းပြီးပါပြီ။ အတည်ပြုရန်လိုပါက အီးမေးလ်ကို စစ်ဆေးပါ။'
+        )
+      );
     } catch (err: any) {
       setError(
         err?.message ||
@@ -159,28 +198,19 @@ export default function Login() {
             'အကောင့်ဖန်တီးမှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။'
           )
       );
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleForgotPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     clearNotices();
     setSubmitting(true);
 
     try {
-      const configuredSiteUrl = (
-        import.meta.env.VITE_SITE_URL as string | undefined
-      )?.trim();
-
-      const siteUrl = (
-        configuredSiteUrl && configuredSiteUrl.length > 0
-          ? configuredSiteUrl
-          : window.location.origin
-      ).replace(/\/$/, '');
-
-      await sendPasswordReset(resetEmail, `${siteUrl}/#/reset-password`);
-
+      const normalizedResetEmail = trimEmail(resetEmail || email);
+      await sendPasswordReset(normalizedResetEmail, `${getSiteOrigin()}/#/reset-password`);
       setSuccessMessage(
         bt(
           'Password reset email sent. Please check your inbox.',
@@ -188,7 +218,6 @@ export default function Login() {
         )
       );
       setResetEmail('');
-      setSubmitting(false);
     } catch (err: any) {
       setError(
         err?.message ||
@@ -197,46 +226,48 @@ export default function Login() {
             'Reset email ပို့မရပါ။ ထပ်မံကြိုးစားပါ။'
           )
       );
+    } finally {
       setSubmitting(false);
     }
   };
 
-  // Upgraded input class for Glassmorphism 2.0
-  const darkInputClass =
-    'h-12 w-full rounded-xl border border-white/10 bg-white/5 text-base text-white placeholder:text-white/40 pl-11 pr-4 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary';
+  const showSignup = () => {
+    setTab('signup');
+    setShowForgotPassword(false);
+    clearNotices();
+  };
+
+  const showLogin = () => {
+    setTab('login');
+    setShowForgotPassword(false);
+    clearNotices();
+  };
 
   return (
     <div className="dark relative min-h-screen w-full overflow-hidden bg-background text-foreground">
-      {/* Background Ambience Layer - Deep Blue Gradient matching enterprise aesthetic */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-background to-background" />
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center p-4 lg:grid lg:grid-cols-2 lg:gap-16 lg:p-8">
-        
-        {/* Left Column: The Login Modal (Bento Surface) */}
         <div className="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 xl:w-[480px]">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-card/40 p-8 shadow-2xl backdrop-blur-xl supports-[backdrop-filter]:bg-card/20">
-            {/* Subtle rim light effect */}
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
             <div className="mb-8 text-center">
-              {/* BULLETPROOF LOGO CONTAINER */}
               <div className="mx-auto mb-6 flex items-center justify-center">
-                <div 
-                  className="relative flex items-center justify-center overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10"
-                  style={{ width: '110px', height: '110px', minWidth: '110px', minHeight: '110px', flexShrink: 0 }}
-                >
-                  <img 
-                    src="/logo.png" 
-                    alt="Britium Express" 
-                    className="absolute inset-0 m-auto" 
-                    style={{ maxWidth: '75%', maxHeight: '75%', objectFit: 'contain' }}
+                <div className="relative flex h-[110px] w-[110px] shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10">
+                  <img
+                    src="/logo.png"
+                    alt="Britium Express"
+                    className="absolute inset-0 m-auto max-h-[75%] max-w-[75%] object-contain"
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none';
+                    }}
                   />
+                  <span className="text-2xl font-black tracking-tight text-white/70">BX</span>
                 </div>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                BRITIUM EXPRESS
-              </h1>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">BRITIUM EXPRESS</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 {bt('Logistics Control Center', 'Britium Portal မှ ကြိုဆိုပါသည်')}
               </p>
@@ -258,12 +289,12 @@ export default function Login() {
 
             {showForgotPassword ? (
               <form onSubmit={handleForgotPassword} className="space-y-5">
-                 <div className="flex items-center gap-3 mb-6">
-                    <ShieldCheck className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {bt('Reset Password', 'စကားဝှက် ပြန်သတ်မှတ်ရန်')}
-                    </h2>
-                  </div>
+                <div className="flex items-center gap-3 mb-6">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {bt('Reset Password', 'စကားဝှက် ပြန်သတ်မှတ်ရန်')}
+                  </h2>
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="reset-email" className="text-sm font-medium text-muted-foreground">
@@ -274,9 +305,9 @@ export default function Login() {
                     <Input
                       id="reset-email"
                       type="email"
-                      placeholder={bt('name@britium.com', 'name@britium.com')}
+                      placeholder="name@britium.com"
                       value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
+                      onChange={(event) => setResetEmail(event.target.value)}
                       className={darkInputClass}
                       required
                       disabled={isBusy}
@@ -284,7 +315,7 @@ export default function Login() {
                   </div>
                 </div>
 
-                <Button type="submit" disabled={isBusy} className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/25">
+                <Button type="submit" disabled={isBusy} className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25">
                   {isBusy ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -296,30 +327,21 @@ export default function Login() {
                 </Button>
 
                 <div className="text-center pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowForgotPassword(false);
-                      clearNotices();
-                    }}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  >
+                  <button type="button" onClick={showLogin} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                     {bt('← Back to sign in', 'အကောင့်ဝင်ရန် ပြန်သွားမည်')}
                   </button>
                 </div>
               </form>
             ) : tab === 'login' ? (
               <form onSubmit={loginMethod === 'password' ? handlePasswordLogin : handleEmailLinkLogin} className="space-y-5">
-                
-                {/* Method Toggle */}
                 <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1 ring-1 ring-white/5">
                   <button
                     type="button"
                     onClick={() => setLoginMethod('password')}
                     className={`flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-all ${
-                      loginMethod === 'password' 
-                      ? 'bg-primary text-primary-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                      loginMethod === 'password'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                     }`}
                   >
                     {bt('Password', 'စကားဝှက်')}
@@ -328,9 +350,9 @@ export default function Login() {
                     type="button"
                     onClick={() => setLoginMethod('emailLink')}
                     className={`flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-all ${
-                      loginMethod === 'emailLink' 
-                      ? 'bg-primary text-primary-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                      loginMethod === 'emailLink'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                     }`}
                   >
                     {bt('Magic Link', 'အီးမေးလ် လင့်ခ်')}
@@ -346,9 +368,9 @@ export default function Login() {
                     <Input
                       id="login-email"
                       type="email"
-                      placeholder={bt('name@britium.com', 'name@britium.com')}
+                      placeholder="name@britium.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(event) => setEmail(event.target.value)}
                       className={darkInputClass}
                       required
                       disabled={isBusy}
@@ -359,7 +381,7 @@ export default function Login() {
                 {loginMethod === 'password' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                       <Label htmlFor="login-password" className="text-sm font-medium text-muted-foreground">
+                      <Label htmlFor="login-password" className="text-sm font-medium text-muted-foreground">
                         {bt('Password', 'စကားဝှက်')}
                       </Label>
                       <button
@@ -374,7 +396,6 @@ export default function Login() {
                         {bt('Forgot password?', 'မေ့နေပါသလား?')}
                       </button>
                     </div>
-                   
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -382,7 +403,7 @@ export default function Login() {
                         type="password"
                         placeholder="••••••••"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(event) => setPassword(event.target.value)}
                         className={darkInputClass}
                         required
                         disabled={isBusy}
@@ -403,15 +424,8 @@ export default function Login() {
                     </span>
                   </label>
 
-                  <button
-                      type="button"
-                      onClick={() => {
-                        setTab('signup');
-                        clearNotices();
-                      }}
-                      className="text-sm font-medium text-foreground hover:text-primary transition-colors"
-                    >
-                      {bt('Create account', 'အကောင့်ဖွင့်ရန်')}
+                  <button type="button" onClick={showSignup} className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                    {bt('Create account', 'အကောင့်ဖွင့်ရန်')}
                   </button>
                 </div>
 
@@ -419,9 +433,7 @@ export default function Login() {
                   {isBusy ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      {loginMethod === 'password'
-                        ? bt('Authenticating...', 'ဝင်နေသည်...')
-                        : bt('Sending...', 'ပို့နေသည်...')}
+                      {loginMethod === 'password' ? bt('Authenticating...', 'ဝင်နေသည်...') : bt('Sending...', 'ပို့နေသည်...')}
                     </>
                   ) : (
                     <>
@@ -447,12 +459,12 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={handleSignup} className="space-y-5">
-                 <div className="flex items-center gap-3 mb-6">
-                    <User className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {bt('Create an Account', 'အကောင့် ဖွင့်ရန်')}
-                    </h2>
-                  </div>
+                <div className="flex items-center gap-3 mb-6">
+                  <User className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {bt('Create an Account', 'အကောင့် ဖွင့်ရန်')}
+                  </h2>
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="signup-name" className="text-sm font-medium text-muted-foreground">
@@ -465,7 +477,7 @@ export default function Login() {
                       type="text"
                       placeholder={bt('Kyaw Min Thu', 'အမည်အပြည့်အစုံ')}
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(event) => setFullName(event.target.value)}
                       className={darkInputClass}
                       required
                       disabled={isBusy}
@@ -482,9 +494,9 @@ export default function Login() {
                     <Input
                       id="signup-email"
                       type="email"
-                      placeholder={bt('name@britium.com', 'ကုမ္ပဏီ အီးမေးလ်')}
+                      placeholder="name@britium.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(event) => setEmail(event.target.value)}
                       className={darkInputClass}
                       required
                       disabled={isBusy}
@@ -503,13 +515,16 @@ export default function Login() {
                       type="password"
                       placeholder="••••••••"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(event) => setPassword(event.target.value)}
                       className={darkInputClass}
                       required
-                      minLength={6}
+                      minLength={PASSWORD_MIN_LENGTH}
                       disabled={isBusy}
                     />
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    {bt('Use at least 8 characters.', 'အနည်းဆုံး ၈ လုံး အသုံးပြုပါ။')}
+                  </p>
                 </div>
 
                 <Button type="submit" disabled={isBusy} className="h-12 w-full mt-4 rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-lg shadow-primary/25">
@@ -524,16 +539,9 @@ export default function Login() {
                 </Button>
 
                 <div className="text-center pt-4">
-                   <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {bt('Already have an account? ', 'အကောင့်ရှိပြီးသားလား? ')}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTab('login');
-                        clearNotices();
-                      }}
-                      className="font-medium text-foreground hover:text-primary transition-colors"
-                    >
+                    <button type="button" onClick={showLogin} className="font-medium text-foreground hover:text-primary transition-colors">
                       {bt('Sign in instead', 'အကောင့်ဝင်ရန်')}
                     </button>
                   </p>
@@ -543,19 +551,14 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Right Column: Corporate Marketing / Feature List (Hidden on Mobile) */}
         <div className="hidden lg:flex flex-col justify-center pl-8 xl:pl-16">
           <div className="space-y-8 max-w-lg">
-            
             <div>
               <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6">
-                 🚀 System Operational
+                🚀 System Operational
               </div>
               <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-                {bt(
-                  'Streamline Your Delivery Operations',
-                  'သင့်ပို့ဆောင်မှုလုပ်ငန်းများကို ပိုမိုချောမွေ့စေပါ'
-                )}
+                {bt('Streamline Your Delivery Operations', 'သင့်ပို့ဆောင်မှုလုပ်ငန်းများကို ပိုမိုချောမွေ့စေပါ')}
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
                 {bt(
@@ -566,40 +569,42 @@ export default function Login() {
             </div>
 
             <div className="grid gap-6 pt-4">
-              {/* Feature 1 */}
               <div className="flex gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-card border border-white/5 shadow-sm">
-                   <ShieldCheck className="h-6 w-6 text-primary" />
+                  <ShieldCheck className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-foreground">
                     {bt('Role-Based Access Control', 'Portal မျိုးစုံ အသုံးပြုခွင့်')}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                    {bt('Specialized, secure interfaces dynamically generated for supervisors, drivers, warehouse staff, and clients.', 'Supervisor, Driver, Warehouse Staff နှင့် Customer Service အတွက် သီးသန့် interface များ')}
+                    {bt(
+                      'Specialized, secure interfaces for supervisors, drivers, warehouse staff, clients, and branch offices.',
+                      'Supervisor, Driver, Warehouse Staff, Customer Service နှင့် Branch Office အတွက် သီးသန့် interface များ'
+                    )}
                   </p>
                 </div>
               </div>
-              
-              {/* Feature 2 */}
+
               <div className="flex gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-card border border-white/5 shadow-sm">
-                   <ArrowRight className="h-6 w-6 text-primary" />
+                  <ArrowRight className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-foreground">
                     {bt('Live Global Telemetry', 'အချိန်နှင့်တပြေးညီ ခြေရာခံခြင်း')}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-                    {bt('Instant updates on fleet statuses, linehaul locations, and final-mile route progression across Myanmar.', 'Delivery status, driver location နှင့် route progress ကို live update ဖြင့် ကြည့်ရှုနိုင်သည်')}
+                    {bt(
+                      'Instant updates on fleet statuses, linehaul locations, and final-mile route progress across Myanmar.',
+                      'Delivery status, driver location နှင့် route progress ကို live update ဖြင့် ကြည့်ရှုနိုင်သည်'
+                    )}
                   </p>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
-
       </div>
     </div>
   );

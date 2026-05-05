@@ -1,15 +1,46 @@
-import { useState, useEffect } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Lock, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Lock } from 'lucide-react';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ROUTE_PATHS } from '@/lib/index';
 import { supabase } from '@/integrations/supabase/client';
 import { useBilingual } from '@/lib/bilingual';
+
+const PASSWORD_MIN_LENGTH = 8;
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isLockError(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as any)?.message ?? error ?? '');
+  return /lock|navigatorlock|acquire/i.test(message);
+}
+
+function currentUrlLooksLikeRecoveryLink() {
+  const url = window.location.href;
+  return /access_token=|refresh_token=|type=recovery|code=/.test(url);
+}
+
+async function updatePasswordWithRetry(password: string) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (!error) return;
+
+    lastError = error;
+    if (!isLockError(error) || attempt === 2) break;
+    await delay(350 * (attempt + 1));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to reset password.');
+}
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
@@ -21,64 +52,73 @@ export default function ResetPassword() {
 
   const navigate = useNavigate();
   const { bt } = useBilingual();
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
+    let recoveryEventReceived = false;
 
-    const checkSession = async () => {
+    const verifySession = async () => {
       try {
-        // 1. Check if Supabase already grabbed the session from the URL
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
 
-        if (session) {
-          if (mounted) {
-            setHasValidSession(true);
-            setIsLoading(false);
-          }
-          return;
-        }
+        if (!mounted) return;
 
-        // 2. Look at the full URL to see if a token exists at all
-        const url = window.location.href;
-        if (!url.includes('access_token=') && !url.includes('type=recovery')) {
-          if (mounted) {
-            setError(
-              bt(
-                'Invalid or expired reset link. Please request a new password reset from the login page.',
-                'Reset link သည် မမှန်ကန်ပါ သို့မဟုတ် သက်တမ်းကုန်သွားပါပြီ။ Login page မှ password reset အသစ်တောင်းခံပါ။'
-              )
-            );
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        // 3. Fail-safe timeout: If there is a token but Supabase hangs, force it to stop loading
-        setTimeout(() => {
-          if (mounted) {
-            setIsLoading(false);
-          }
-        }, 3000);
-
-      } catch (err) {
-        if (mounted) {
-          setError(bt('An error occurred. Please try again.', 'အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။ ထပ်မံကြိုးစားပါ။'));
+        if (data.session) {
+          setHasValidSession(true);
           setIsLoading(false);
+          return;
         }
+
+        if (!currentUrlLooksLikeRecoveryLink()) {
+          setError(
+            bt(
+              'Invalid or expired reset link. Please request a new password reset from the login page.',
+              'Reset link သည် မမှန်ကန်ပါ သို့မဟုတ် သက်တမ်းကုန်သွားပါပြီ။ Login page မှ password reset အသစ်တောင်းခံပါ။'
+            )
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        await delay(1200);
+
+        const retry = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (retry.data.session || recoveryEventReceived) {
+          setHasValidSession(true);
+          setIsLoading(false);
+          return;
+        }
+
+        setError(
+          bt(
+            'The reset link could not be verified. Please open the latest reset email or request a new link.',
+            'Reset link ကို အတည်မပြုနိုင်ပါ။ နောက်ဆုံးရ reset email ကိုဖွင့်ပါ သို့မဟုတ် link အသစ်တောင်းခံပါ။'
+          )
+        );
+        setIsLoading(false);
+      } catch {
+        if (!mounted) return;
+        setError(bt('An error occurred. Please try again.', 'အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။ ထပ်မံကြိုးစားပါ။'));
+        setIsLoading(false);
       }
     };
 
-    // Listen for Supabase's official recovery event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
       if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-        if (mounted) {
-          setHasValidSession(true);
-          setIsLoading(false);
-        }
+        recoveryEventReceived = true;
+        setHasValidSession(Boolean(session));
+        setIsLoading(false);
       }
     });
 
-    checkSession();
+    void verifySession();
 
     return () => {
       mounted = false;
@@ -86,8 +126,10 @@ export default function ResetPassword() {
     };
   }, [bt]);
 
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleResetPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submittingRef.current) return;
+
     setError('');
 
     if (password !== confirmPassword) {
@@ -95,38 +137,37 @@ export default function ResetPassword() {
       return;
     }
 
-    if (password.length < 6) {
-      setError(bt('Password must be at least 6 characters long', 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံး ရှိရမည်'));
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(
+        bt(
+          `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`,
+          `စကားဝှက်သည် အနည်းဆုံး ${PASSWORD_MIN_LENGTH} လုံး ရှိရမည်`
+        )
+      );
       return;
     }
 
+    submittingRef.current = true;
     setIsLoading(true);
 
-    // ANTI-COLLISION RETRY LOGIC
-    const attemptUpdate = async (retriesLeft = 2) => {
-      try {
-        const { error } = await supabase.auth.updateUser({ password });
-        if (error) throw error;
-
-        setSuccess(true);
-        setTimeout(() => {
-          navigate(ROUTE_PATHS.LOGIN || '/login');
-        }, 2500);
-      } catch (err: any) {
-        // If it's a lock collision, wait 500ms and try again
-        if (err?.message?.includes('Lock') && retriesLeft > 0) {
-          console.warn('Supabase lock collision detected, retrying...');
-          setTimeout(() => attemptUpdate(retriesLeft - 1), 500);
-        } else {
-          // Real error or out of retries
-          setError(err?.message || bt('Failed to reset password. Please try again.', 'စကားဝှက်ပြန်သတ်မှတ်မှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။'));
-          setIsLoading(false);
-        }
-      }
-    };
-
-    // Kick off the first attempt
-    await attemptUpdate();
+    try {
+      await updatePasswordWithRetry(password);
+      setSuccess(true);
+      await supabase.auth.signOut().catch(() => undefined);
+      window.setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 1200);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          bt(
+            'Failed to reset password. Please try again.',
+            'စကားဝှက်ပြန်သတ်မှတ်မှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။'
+          )
+      );
+      setIsLoading(false);
+      submittingRef.current = false;
+    }
   };
 
   return (
@@ -140,9 +181,7 @@ export default function ResetPassword() {
         >
           <div className="mb-8 text-center">
             <div className="inline-flex items-center justify-center mb-2">
-              <h1 className="text-3xl font-black tracking-widest text-primary uppercase">
-                BRITIUM EXPRESS
-              </h1>
+              <h1 className="text-3xl font-black tracking-widest text-primary uppercase">BRITIUM EXPRESS</h1>
             </div>
             <p className="text-muted-foreground mt-2">
               {bt('Reset Your Password', 'သင့်စကားဝှက်ကို ပြန်လည်သတ်မှတ်ပါ')}
@@ -156,20 +195,20 @@ export default function ResetPassword() {
             </CardHeader>
 
             <CardContent>
-              {isLoading ? (
+              {isLoading && !success ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <span className="ml-3 font-medium text-muted-foreground">
                     {bt('Verifying reset link...', 'Reset link ကို စစ်ဆေးနေသည်...')}
                   </span>
                 </div>
-              ) : !hasValidSession ? (
+              ) : !hasValidSession && !success ? (
                 <div className="space-y-4">
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
-                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login')}>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login', { replace: true })}>
                     {bt('Back to Login', 'Login သို့ ပြန်သွားမည်')}
                   </Button>
                 </div>
@@ -198,11 +237,12 @@ export default function ResetPassword() {
                         type="password"
                         placeholder={bt('Enter new password', 'စကားဝှက်အသစ် ထည့်ပါ')}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(event) => setPassword(event.target.value)}
                         className="pl-10"
                         required
-                        minLength={6}
+                        minLength={PASSWORD_MIN_LENGTH}
                         disabled={isLoading}
+                        autoComplete="new-password"
                       />
                     </div>
                   </div>
@@ -216,15 +256,19 @@ export default function ResetPassword() {
                         type="password"
                         placeholder={bt('Confirm new password', 'စကားဝှက်အသစ်ကို ထပ်မံထည့်ပါ')}
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
                         className="pl-10"
                         required
-                        minLength={6}
+                        minLength={PASSWORD_MIN_LENGTH}
                         disabled={isLoading}
+                        autoComplete="new-password"
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {bt('Password must be at least 6 characters long', 'စကားဝှက်သည် အနည်းဆုံး ၆ လုံး ရှိရမည်')}
+                      {bt(
+                        `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`,
+                        `စကားဝှက်သည် အနည်းဆုံး ${PASSWORD_MIN_LENGTH} လုံး ရှိရမည်`
+                      )}
                     </p>
                   </div>
 
@@ -239,7 +283,7 @@ export default function ResetPassword() {
                     )}
                   </Button>
 
-                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login')}>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/login', { replace: true })}>
                     {bt('Back to Login', 'Login သို့ ပြန်သွားမည်')}
                   </Button>
                 </form>
@@ -250,25 +294,13 @@ export default function ResetPassword() {
       </div>
 
       <div className="hidden lg:flex flex-1 relative overflow-hidden bg-slate-900">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover"
-        >
+        <video autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover">
           <source src="/background.mp4" type="video/mp4" />
-          <img src="/background.gif" alt="Britium Express Background" className="absolute inset-0 w-full h-full object-cover" />
         </video>
-        
         <div className="absolute inset-0 bg-gradient-to-br from-primary/90 to-primary/60" />
-        
+
         <div className="relative z-10 flex flex-col justify-center p-12 text-white">
-          <motion.div
-            initial={{ opacity: 0, x: 18 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.35, delay: 0.1 }}
-          >
+          <motion.div initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35, delay: 0.1 }}>
             <h2 className="text-4xl font-bold mb-6">
               {bt('Secure Password Reset', 'လုံခြုံသော စကားဝှက်ပြန်သတ်မှတ်မှု')}
             </h2>
